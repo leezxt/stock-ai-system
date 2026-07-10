@@ -7,6 +7,7 @@ import com.example.stockai.market.SymbolNormalizer;
 
 public record DocumentChunk(
     String chunkId,
+    String ownerEmail,
     String symbol,
     Market market,
     DocumentType docType,
@@ -15,8 +16,22 @@ public record DocumentChunk(
     Instant publishedAt,
     String content
 ) {
+    public DocumentChunk(
+        String chunkId,
+        String symbol,
+        Market market,
+        DocumentType docType,
+        String title,
+        String source,
+        Instant publishedAt,
+        String content
+    ) {
+        this(chunkId, "", symbol, market, docType, title, source, publishedAt, content);
+    }
+
     public DocumentChunk {
         chunkId = requireText(chunkId, "chunkId");
+        ownerEmail = ownerEmail == null ? "" : ownerEmail.trim().toLowerCase();
         market = requireNonNull(market, "market");
         docType = requireNonNull(docType, "docType");
         symbol = SymbolNormalizer.normalize(market, requireText(symbol, "symbol"));

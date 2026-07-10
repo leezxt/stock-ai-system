@@ -11,45 +11,48 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.example.stockai.auth.AuthService;
 import com.example.stockai.common.ApiResponse;
+import com.example.stockai.common.RequestGuard;
 import com.example.stockai.market.Market;
 import com.example.stockai.market.SymbolNormalizer;
 import com.example.stockai.rag.RetrievedDocument;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 @RestController
 @RequestMapping("/api/v1")
 public class MockFeatureController {
-    private static final List<String> DEFAULT_PROVIDERS = List.of("OPENAI", "CLAUDE", "GEMINI", "DEEPSEEK", "MIMO");
+    private static final List<String> DEFAULT_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK", "MIMO");
+    private static final List<String> ALLOWED_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK", "MIMO");
 
     private final AiProviderAdapter aiProviderAdapter;
     private final RagContextService ragContextService;
     private final StockService stockService;
     private final WatchlistService watchlistService;
-    private final AuthService authService;
+    private final RequestGuard requestGuard;
 
     public MockFeatureController(
         AiProviderAdapter aiProviderAdapter,
         RagContextService ragContextService,
         StockService stockService,
         WatchlistService watchlistService,
-        AuthService authService
+        RequestGuard requestGuard
     ) {
         this.aiProviderAdapter = aiProviderAdapter;
         this.ragContextService = ragContextService;
         this.stockService = stockService;
         this.watchlistService = watchlistService;
-        this.authService = authService;
+        this.requestGuard = requestGuard;
     }
 
     @PostMapping("/ai/analysis")
-    ApiResponse<AiAnalysisResponse> analysis(@RequestBody AiRequest request) {
+    ApiResponse<AiAnalysisResponse> analysis(HttpServletRequest servletRequest, @RequestBody AiRequest request) {
+        String ownerEmail = requestGuard.requireUser(servletRequest, "ai-analysis", 20).email();
         StockRecord stock = stockService.get(request.market(), request.symbol());
-        RagContext context = ragContextService.buildAnalysisContext(stock, request.horizonDays());
+        RagContext context = ragContextService.buildAnalysisContext(stock, request.horizonDays(), ownerEmail);
         AiProviderResult result = aiProviderAdapter.analyze(stock, context, providerOrDefault(request.provider()), 0);
         return ApiResponse.of(new AiAnalysisResponse(
             stock.symbol(),
@@ -70,10 +73,11 @@ public class MockFeatureController {
     }
 
     @PostMapping("/ai/model-comparison")
-    ApiResponse<ModelComparisonResponse> modelComparison(@RequestBody ModelComparisonRequest request) {
+    ApiResponse<ModelComparisonResponse> modelComparison(HttpServletRequest servletRequest, @RequestBody ModelComparisonRequest request) {
+        String ownerEmail = requestGuard.requireUser(servletRequest, "ai-model-comparison", 8).email();
         StockRecord stock = stockService.get(request.market(), request.symbol());
-        RagContext context = ragContextService.buildAnalysisContext(stock, request.horizonDays());
-        List<String> providers = request.providers() == null || request.providers().isEmpty() ? DEFAULT_PROVIDERS : request.providers();
+        RagContext context = ragContextService.buildAnalysisContext(stock, request.horizonDays(), ownerEmail);
+        List<String> providers = normalizeProviders(request.providers());
         List<AiProviderResult> results = new ArrayList<>();
         for (int i = 0; i < providers.size(); i++) {
             results.add(aiProviderAdapter.analyze(stock, context, providers.get(i), i));
@@ -107,11 +111,13 @@ public class MockFeatureController {
     }
 
     @PostMapping("/ai/chat")
-    ApiResponse<AiChatResponse> chat(@RequestBody AiChatRequest request) {
+    ApiResponse<AiChatResponse> chat(HttpServletRequest servletRequest, @RequestBody AiChatRequest request) {
+        String ownerEmail = requestGuard.requireUser(servletRequest, "ai-chat", 30).email();
+        String message = requireText(request.message(), "message", 2_000);
         StockRecord stock = stockService.get(request.market(), request.symbol());
         String provider = providerOrDefault(request.provider());
-        RagContext context = ragContextService.buildChatContext(stock, 5, request.message());
-        AiChatResult result = aiProviderAdapter.chatMessage(stock, context, provider, request.message());
+        RagContext context = ragContextService.buildChatContext(stock, 5, message, ownerEmail);
+        AiChatResult result = aiProviderAdapter.chatMessage(stock, context, provider, message);
         return ApiResponse.of(new AiChatResponse(
             stock.market(),
             stock.symbol(),
@@ -123,10 +129,11 @@ public class MockFeatureController {
         ));
     }
 
-    @PostMapping("/backtest")
-    ApiResponse<BacktestResponse> backtest(@RequestBody BacktestRequest request) {
+    @PostMapping({"/backtest", "/backtests"})
+    ApiResponse<BacktestResponse> backtest(HttpServletRequest servletRequest, @RequestBody BacktestRequest request) {
+        String ownerEmail = requestGuard.requireUser(servletRequest, "backtest", 10).email();
         StockRecord stock = stockService.get(request.market(), request.symbol());
-        RagContext context = ragContextService.buildAnalysisContext(stock, 5);
+        RagContext context = ragContextService.buildAnalysisContext(stock, 5, ownerEmail);
         BigDecimal edge = new BigDecimal(aiProviderAdapter.analyze(stock, context, "OPENAI", 0).aiScore())
             .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP)
             .subtract(new BigDecimal("0.60"));
@@ -138,13 +145,15 @@ public class MockFeatureController {
             new BigDecimal("-0.098"),
             new BigDecimal("1.05").add(edge),
             42,
+            "heuristic-simulation-v1",
             Instant.now()
         ));
     }
 
     @GetMapping("/watchlist")
-    ApiResponse<List<StockRecord>> watchlist(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        List<StockRecord> data = watchlistItems(authorization).stream()
+    ApiResponse<List<StockRecord>> watchlist(HttpServletRequest request) {
+        String email = requestGuard.requireUser(request, "watchlist-read", 60).email();
+        List<StockRecord> data = watchlistService.list(email).stream()
             .map(item -> stockService.get(item.market(), item.symbol()))
             .toList();
         return ApiResponse.of(data);
@@ -152,50 +161,53 @@ public class MockFeatureController {
 
     @PostMapping("/watchlist")
     ApiResponse<StockRecord> addWatchlist(
-        @RequestHeader(value = "Authorization", required = false) String authorization,
+        HttpServletRequest servletRequest,
         @RequestBody WatchlistItem request
     ) {
+        String userEmail = requestGuard.requireUser(servletRequest, "watchlist-write", 30).email();
         StockRecord stock = stockService.get(request.market(), request.symbol());
-        String userEmail = userEmailOrNull(authorization);
         WatchlistItem item = new WatchlistItem(stock.market(), stock.symbol());
-        if (userEmail == null) {
-            watchlistService.add(item);
-        } else {
-            watchlistService.add(userEmail, item);
-        }
+        watchlistService.add(userEmail, item);
         return ApiResponse.of(stock);
     }
 
     @DeleteMapping("/watchlist/{market}/{symbol}")
     ApiResponse<DeleteWatchlistResponse> deleteWatchlist(
-        @RequestHeader(value = "Authorization", required = false) String authorization,
+        HttpServletRequest servletRequest,
         @PathVariable Market market,
         @PathVariable String symbol
     ) {
+        String userEmail = requestGuard.requireUser(servletRequest, "watchlist-write", 30).email();
         String normalized = SymbolNormalizer.normalize(market, symbol);
-        String userEmail = userEmailOrNull(authorization);
-        if (userEmail == null) {
-            watchlistService.delete(market, normalized);
-        } else {
-            watchlistService.delete(userEmail, market, normalized);
-        }
+        watchlistService.delete(userEmail, market, normalized);
         return ApiResponse.of(new DeleteWatchlistResponse(market, normalized, true));
     }
 
-    private List<WatchlistItem> watchlistItems(String authorization) {
-        String userEmail = userEmailOrNull(authorization);
-        return userEmail == null ? watchlistService.list() : watchlistService.list(userEmail);
-    }
-
-    private String userEmailOrNull(String authorization) {
-        if (authorization == null || authorization.isBlank()) {
-            return null;
-        }
-        return authService.requireUser(authorization).email();
-    }
-
     private static String providerOrDefault(String provider) {
-        return provider == null || provider.isBlank() ? "OPENAI" : provider.toUpperCase();
+        String normalized = provider == null || provider.isBlank() ? "OPENAI" : provider.trim().toUpperCase();
+        if (!ALLOWED_PROVIDERS.contains(normalized)) {
+            throw new IllegalArgumentException("unsupported provider");
+        }
+        return normalized;
+    }
+
+    private static List<String> normalizeProviders(List<String> requested) {
+        List<String> providers = requested == null || requested.isEmpty() ? DEFAULT_PROVIDERS : requested;
+        if (providers.size() > 4) {
+            throw new IllegalArgumentException("providers must not contain more than 4 items");
+        }
+        return providers.stream().map(MockFeatureController::providerOrDefault).distinct().toList();
+    }
+
+    private static String requireText(String value, String field, int maxLength) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
+        }
+        String normalized = value.trim();
+        if (normalized.length() > maxLength) {
+            throw new IllegalArgumentException(field + " is too long");
+        }
+        return normalized;
     }
 
     private static BigDecimal clamp(BigDecimal value, BigDecimal min, BigDecimal max) {
@@ -253,6 +265,7 @@ public class MockFeatureController {
         BigDecimal maxDrawdown,
         BigDecimal sharpeRatio,
         int tradeCount,
+        String source,
         Instant generatedAt
     ) {}
 }

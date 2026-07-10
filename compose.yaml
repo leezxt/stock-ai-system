@@ -44,7 +44,7 @@ services:
       FINMIND_BASE_URL: ${FINMIND_BASE_URL:-https://api.finmindtrade.com/api/v4}
       FMP_API_KEY: ${FMP_API_KEY:-}
       STOCKAI_TWSE_DISCLOSURE_URL: ${STOCKAI_TWSE_DISCLOSURE_URL:-}
-      STOCKAI_AUTH_SECRET: ${STOCKAI_AUTH_SECRET:-stock-ai-local-dev-secret}
+      STOCKAI_AUTH_SECRET: ${STOCKAI_AUTH_SECRET:-}
     volumes:
       - stock_ai_data:/app/backend/data
 

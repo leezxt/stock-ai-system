@@ -16,7 +16,7 @@ class AccountSettingsServiceTest {
     Path tempDir;
 
     @Test
-    void savesAndLoadsStoredKeysWithoutReturningSecrets() {
+    void savesAndLoadsStoredKeysWithoutReturningSecrets() throws Exception {
         AccountSettingsService service = new AccountSettingsService(tempDir);
 
         AccountSettingsService.AccountSettingsView saved = service.update(
@@ -34,6 +34,8 @@ class AccountSettingsServiceTest {
         assertThat(service.geminiApiKey("demo@example.com")).isEqualTo("gemini-secret");
         assertThat(service.deepSeekApiKey("demo@example.com")).isEqualTo("deepseek-secret");
         assertThat(service.mimoApiKey("demo@example.com")).isEqualTo("mimo-secret");
+        String persisted = Files.readString(UserScopedFileLocator.resolve(tempDir, "", ".properties", "demo@example.com"));
+        assertThat(persisted).contains("enc\\:v1\\:").doesNotContain("openai-secret", "gemini-secret", "deepseek-secret", "mimo-secret");
     }
 
     @Test

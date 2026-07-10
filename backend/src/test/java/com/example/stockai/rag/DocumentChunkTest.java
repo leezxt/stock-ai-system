@@ -44,4 +44,16 @@ class DocumentChunkTest {
         )).isInstanceOf(IllegalArgumentException.class)
             .hasMessage("content must not be blank");
     }
+
+    @Test
+    void rejectsUnboundedImportAndRetrieveRequests() {
+        assertThatThrownBy(() -> new DocumentImportRequest(
+            "AAPL", Market.US, DocumentType.NEWS, "Title", "Source", Instant.now(), "x".repeat(200_001)
+        )).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("200000");
+
+        assertThatThrownBy(() -> new DocumentRetrieveRequest("query", 21, null, null, null, null, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("between 1 and 20");
+    }
 }

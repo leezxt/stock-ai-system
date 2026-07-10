@@ -11,7 +11,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 class CorsConfigTest {
     @Test
     void allowsPutForApiCorsMappings() {
-        WebMvcConfigurer configurer = new CorsConfig().corsConfigurer();
+        WebMvcConfigurer configurer = new CorsConfig().corsConfigurer("https://stock.example.com");
         TestCorsRegistry registry = new TestCorsRegistry();
         configurer.addCorsMappings(registry);
 

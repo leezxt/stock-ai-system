@@ -4,6 +4,8 @@
 
 This folder contains a runnable frontend MVP, zero-dependency mock API, and Spring Boot backend.
 
+Security hardening completed on 2026-07-11: authenticated/limited cost-bearing APIs, HttpOnly session cookie, AES-GCM provider-key storage, owner-scoped RAG, HikariCP, Flyway migrations, dependency-aware health checks, same-origin frontend API defaults, and restricted CORS.
+
 Start everything on Windows:
 
 ```powershell

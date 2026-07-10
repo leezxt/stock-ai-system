@@ -1,6 +1,18 @@
 # Stock AI Work Handoff
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
+
+## Security hardening completed 2026-07-11
+
+- Cost-bearing AI, backtest, watchlist, RAG, and source-fetch endpoints now require authentication and use per-user/IP rate limits.
+- Browser auth uses an HttpOnly SameSite session cookie; localStorage no longer contains session tokens or provider keys.
+- Account provider keys are encrypted with AES-256-GCM before database/file persistence, with legacy plaintext read compatibility.
+- RAG chunks are owner-scoped in memory and PostgreSQL; runtime two-user isolation smoke passed.
+- PostgreSQL uses HikariCP and Flyway migrations. Existing schema was baselined at V1 and owner migration V2 was applied successfully.
+- `/health` verifies PostgreSQL with `SELECT 1` and returns HTTP 503 when a configured database is unavailable.
+- Frontend defaults to same-origin `/api/v1`, and CORS is restricted to configured origins.
+- Technical indicators now derive from available price history; prediction is explicitly labeled `heuristic-momentum-v1`.
+- Current automated result: 82 tests passed before final documentation-only validation.
 
 ## Run
 

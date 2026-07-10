@@ -22,6 +22,12 @@ public record DocumentImportRequest(
         source = requireText(source, "source");
         publishedAt = requireNonNull(publishedAt, "publishedAt");
         content = requireText(content, "content");
+        if (title.length() > 300 || source.length() > 500) {
+            throw new IllegalArgumentException("title or source is too long");
+        }
+        if (content.length() > 200_000) {
+            throw new IllegalArgumentException("content must not exceed 200000 characters");
+        }
     }
 
     private static String requireText(String value, String field) {

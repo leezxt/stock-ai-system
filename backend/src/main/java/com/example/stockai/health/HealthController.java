@@ -1,9 +1,12 @@
 package com.example.stockai.health;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,6 +16,16 @@ import com.example.stockai.common.ExternalApiKeyHeaderResolver;
 @RestController
 @RequestMapping("/api/v1/health")
 public class HealthController {
+    private final JdbcTemplate jdbcTemplate;
+
+    public HealthController() {
+        this.jdbcTemplate = null;
+    }
+
+    @Autowired
+    public HealthController(Optional<JdbcTemplate> jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate.orElse(null);
+    }
     private static final String DEFAULT_TWSE_DISCLOSURE_URL = "https://mopsov.twse.com.tw/mops/web/ajax_t05st01?firstin=1&TYPEK=all&co_id={symbol}&year={rocYear}&month=&b_date=&e_date=";
 
     @Value("${stockai.openai.api-key:${OPENAI_API_KEY:}}")
@@ -76,11 +89,12 @@ public class HealthController {
     private ExternalApiKeyHeaderResolver externalApiKeyHeaderResolver;
 
     @GetMapping
-    HealthResponse health() {
+    ResponseEntity<HealthResponse> health() {
         boolean alphaVantageConfigured = !isBlank(resolveAlphaVantageApiKey());
         boolean finMindTokenConfigured = !isBlank(resolveFinMindToken());
         boolean fmpConfigured = !isBlank(resolveFmpApiKey()) && !isBlank(fmpBaseUrl);
-        return new HealthResponse("UP", Instant.now(), new ProviderReadiness(
+        DatabaseReadiness database = databaseReadiness();
+        HealthResponse response = new HealthResponse(database.healthy() ? "UP" : "DOWN", Instant.now(), database, new ProviderReadiness(
             !isBlank(openAiApiKey),
             isBlank(openAiModel) ? "gpt-5.5" : openAiModel.trim(),
             !isBlank(geminiApiKey),
@@ -114,6 +128,7 @@ public class HealthController {
             !isBlank(twseDisclosureUrl),
             twseDisclosureUrl
         ));
+        return database.healthy() ? ResponseEntity.ok(response) : ResponseEntity.status(503).body(response);
     }
 
     private boolean isBlank(String value) {
@@ -138,7 +153,21 @@ public class HealthController {
             : externalApiKeyHeaderResolver.resolveFmp(fmpApiKey);
     }
 
-    public record HealthResponse(String status, Instant timestamp, ProviderReadiness providers) {}
+    private DatabaseReadiness databaseReadiness() {
+        if (jdbcTemplate == null) {
+            return new DatabaseReadiness(false, true, "FILE_FALLBACK");
+        }
+        try {
+            Integer value = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
+            return new DatabaseReadiness(true, Integer.valueOf(1).equals(value), "POSTGRESQL");
+        } catch (RuntimeException ex) {
+            return new DatabaseReadiness(true, false, "POSTGRESQL");
+        }
+    }
+
+    public record HealthResponse(String status, Instant timestamp, DatabaseReadiness database, ProviderReadiness providers) {}
+
+    public record DatabaseReadiness(boolean configured, boolean healthy, String mode) {}
 
     public record ProviderReadiness(
         boolean openAiConfigured,

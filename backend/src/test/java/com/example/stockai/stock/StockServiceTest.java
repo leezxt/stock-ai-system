@@ -60,7 +60,9 @@ class StockServiceTest {
 
         assertThat(prediction.symbol()).isEqualTo("AAPL");
         assertThat(prediction.horizonDays()).isEqualTo(5);
-        assertThat(prediction.riskLevel()).isEqualTo("MEDIUM");
+        assertThat(prediction.riskLevel()).isIn("LOW", "MEDIUM", "HIGH");
+        assertThat(prediction.modelVersion()).isEqualTo("heuristic-momentum-v1");
+        assertThat(prediction.upProbability()).isBetween(new java.math.BigDecimal("0.30"), new java.math.BigDecimal("0.70"));
     }
 
     @Test

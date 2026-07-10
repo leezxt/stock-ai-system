@@ -53,7 +53,7 @@ class GeminiProviderAdapterTest {
             """;
         FakeHttpClient httpClient = new FakeHttpClient(body);
         ApiKeyHeaderResolver keyResolver = new ApiKeyHeaderResolver(
-            new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret", 3600),
+            new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600),
             new AccountSettingsService(tempDir.resolve("account-settings"))
         );
         GeminiProviderAdapter adapter = new GeminiProviderAdapter(

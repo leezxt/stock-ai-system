@@ -1,5 +1,7 @@
 package com.example.stockai.rag;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,12 +28,18 @@ public class DocumentIngestionService {
     }
 
     public List<DocumentChunk> ingest(DocumentImportRequest request) {
+        return ingest(request, "");
+    }
+
+    public List<DocumentChunk> ingest(DocumentImportRequest request, String ownerEmail) {
+        String normalizedOwner = ownerEmail == null ? "" : ownerEmail.trim().toLowerCase();
         String cleaned = clean(request.content());
         List<String> chunks = split(cleaned);
         List<DocumentChunk> result = new ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
             result.add(new DocumentChunk(
-                chunkId(request, i),
+                chunkId(request, normalizedOwner, i),
+                normalizedOwner,
                 request.symbol(),
                 request.market(),
                 request.docType(),
@@ -93,7 +101,21 @@ public class DocumentIngestionService {
         return hardEnd;
     }
 
-    private static String chunkId(DocumentImportRequest request, int index) {
-        return request.market().name() + "-" + request.symbol() + "-" + request.publishedAt().toEpochMilli() + "-" + index;
+    private static String chunkId(DocumentImportRequest request, String ownerEmail, int index) {
+        String identity = String.join("|",
+            ownerEmail,
+            request.market().name(),
+            request.symbol(),
+            request.docType().name(),
+            request.source(),
+            request.title(),
+            request.publishedAt().toString()
+        );
+        try {
+            String digest = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(identity.getBytes(StandardCharsets.UTF_8)));
+            return request.market().name() + "-" + request.symbol() + "-" + digest.substring(0, 24) + "-" + index;
+        } catch (Exception ex) {
+            throw new IllegalStateException("cannot generate chunk id", ex);
+        }
     }
 }

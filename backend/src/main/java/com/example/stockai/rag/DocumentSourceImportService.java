@@ -55,78 +55,96 @@ public class DocumentSourceImportService {
     }
 
     public SourceImportResponse importNews(Market market, String symbol, int limit) {
+        return importNews(market, symbol, limit, "");
+    }
+
+    public SourceImportResponse importNews(Market market, String symbol, int limit, String ownerEmail) {
         final Market normalizedMarket = requireMarket(market);
         final String normalizedSymbol = normalizeSymbol(normalizedMarket, symbol);
         final int normalizedLimit = normalizeLimit(limit);
         if (normalizedMarket == Market.TW) {
             List<DocumentImportRequest> finMindDocuments = fetchSafely(() -> finMindTwNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit));
             if (!finMindDocuments.isEmpty()) {
-                return importDocuments(finMindDocuments, normalizedMarket, normalizedSymbol, "finmind-news-adapter");
+                return importDocuments(finMindDocuments, normalizedMarket, normalizedSymbol, "finmind-news-adapter", ownerEmail);
             }
-            return importDocuments(fetchSafely(() -> yahooFinanceNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit)), normalizedMarket, normalizedSymbol, "yahoo-finance-news-adapter");
+            return importDocuments(fetchSafely(() -> yahooFinanceNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit)), normalizedMarket, normalizedSymbol, "yahoo-finance-news-adapter", ownerEmail);
         }
         List<DocumentImportRequest> alphaVantageDocuments = fetchSafely(() -> alphaVantageNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit));
         if (!alphaVantageDocuments.isEmpty()) {
-            return importDocuments(alphaVantageDocuments, normalizedMarket, normalizedSymbol, "alpha-vantage-news-adapter");
+            return importDocuments(alphaVantageDocuments, normalizedMarket, normalizedSymbol, "alpha-vantage-news-adapter", ownerEmail);
         }
         List<DocumentImportRequest> fmpDocuments = fetchSafely(() -> fmpNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit));
         if (!fmpDocuments.isEmpty()) {
-            return importDocuments(fmpDocuments, normalizedMarket, normalizedSymbol, "fmp-news-adapter");
+            return importDocuments(fmpDocuments, normalizedMarket, normalizedSymbol, "fmp-news-adapter", ownerEmail);
         }
-        return importDocuments(fetchSafely(() -> yahooFinanceNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit)), normalizedMarket, normalizedSymbol, "yahoo-finance-news-adapter");
+        return importDocuments(fetchSafely(() -> yahooFinanceNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit)), normalizedMarket, normalizedSymbol, "yahoo-finance-news-adapter", ownerEmail);
     }
 
     public SourceImportResponse importAnnouncements(Market market, String symbol, int limit) {
+        return importAnnouncements(market, symbol, limit, "");
+    }
+
+    public SourceImportResponse importAnnouncements(Market market, String symbol, int limit, String ownerEmail) {
         final Market normalizedMarket = requireMarket(market);
         final String normalizedSymbol = normalizeSymbol(normalizedMarket, symbol);
         final int normalizedLimit = normalizeLimit(limit);
         List<DocumentImportRequest> disclosureDocuments = fetchSafely(() -> twseDisclosureSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit));
         if (!disclosureDocuments.isEmpty()) {
-            return importDocuments(disclosureDocuments, normalizedMarket, normalizedSymbol, "twse-disclosure-adapter");
+            return importDocuments(disclosureDocuments, normalizedMarket, normalizedSymbol, "twse-disclosure-adapter", ownerEmail);
         }
         return importDocuments(
             convertDocuments(fetchSafely(() -> yahooFinanceNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit)), DocumentType.COMPANY_ANNOUNCEMENT, "yahoo-finance-announcement-fallback"),
             normalizedMarket,
             normalizedSymbol,
-            "yahoo-finance-announcement-fallback"
+            "yahoo-finance-announcement-fallback",
+            ownerEmail
         );
     }
 
     public SourceImportResponse importTranscript(Market market, String symbol, String quarter) {
+        return importTranscript(market, symbol, quarter, "");
+    }
+
+    public SourceImportResponse importTranscript(Market market, String symbol, String quarter, String ownerEmail) {
         final Market normalizedMarket = requireMarket(market);
         final String normalizedSymbol = normalizeSymbol(normalizedMarket, symbol);
         List<DocumentImportRequest> transcriptDocuments = fetchOneSafely(() -> alphaVantageTranscriptSourceAdapter.fetch(normalizedMarket, normalizedSymbol, quarter)).stream().toList();
         if (!transcriptDocuments.isEmpty()) {
-            return importDocuments(transcriptDocuments, normalizedMarket, normalizedSymbol, "earnings-call-adapter");
+            return importDocuments(transcriptDocuments, normalizedMarket, normalizedSymbol, "earnings-call-adapter", ownerEmail);
         }
         transcriptDocuments = fetchOneSafely(() -> fmpTranscriptSourceAdapter.fetch(normalizedMarket, normalizedSymbol, quarter)).stream().toList();
         if (!transcriptDocuments.isEmpty()) {
-            return importDocuments(transcriptDocuments, normalizedMarket, normalizedSymbol, "fmp-earnings-transcript-adapter");
+            return importDocuments(transcriptDocuments, normalizedMarket, normalizedSymbol, "fmp-earnings-transcript-adapter", ownerEmail);
         }
         return importDocuments(
             convertDocuments(fetchSafely(() -> yahooFinanceNewsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, 5)), DocumentType.EARNINGS_TRANSCRIPT, "yahoo-finance-transcript-fallback"),
             normalizedMarket,
             normalizedSymbol,
-            "yahoo-finance-transcript-fallback"
+            "yahoo-finance-transcript-fallback",
+            ownerEmail
         );
     }
 
     public SourceImportResponse importFinancials(Market market, String symbol, int limit) {
+        return importFinancials(market, symbol, limit, "");
+    }
+
+    public SourceImportResponse importFinancials(Market market, String symbol, int limit, String ownerEmail) {
         final Market normalizedMarket = requireMarket(market);
         final String normalizedSymbol = normalizeSymbol(normalizedMarket, symbol);
         final int normalizedLimit = normalizeLimit(limit);
         List<DocumentImportRequest> finMindDocuments = fetchSafely(() -> finMindTwFinancialReportSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit));
         if (!finMindDocuments.isEmpty()) {
-            return importDocuments(finMindDocuments, normalizedMarket, normalizedSymbol, "finmind-financials-adapter");
+            return importDocuments(finMindDocuments, normalizedMarket, normalizedSymbol, "finmind-financials-adapter", ownerEmail);
         }
-        return importDocuments(fetchSafely(() -> yahooFinanceFinancialsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit)), normalizedMarket, normalizedSymbol, "yahoo-finance-financials-adapter");
+        return importDocuments(fetchSafely(() -> yahooFinanceFinancialsSourceAdapter.fetch(normalizedMarket, normalizedSymbol, normalizedLimit)), normalizedMarket, normalizedSymbol, "yahoo-finance-financials-adapter", ownerEmail);
     }
 
-    private SourceImportResponse importDocuments(List<DocumentImportRequest> documents, Market market, String symbol, String adapter) {
+    private SourceImportResponse importDocuments(List<DocumentImportRequest> documents, Market market, String symbol, String adapter, String ownerEmail) {
         documents = documents == null ? List.of() : documents.stream().filter(Objects::nonNull).toList();
         List<DocumentChunk> chunks = new ArrayList<>();
         for (DocumentImportRequest document : documents) {
-            chunks.addAll(documentIngestionService.ingest(document));
+            chunks.addAll(documentIngestionService.ingest(document, ownerEmail));
         }
         vectorStore.upsert(documentEmbeddingService.embed(chunks));
         List<String> titles = documents.stream().map(DocumentImportRequest::title).toList();
@@ -184,7 +202,7 @@ public class DocumentSourceImportService {
     }
 
     private static int normalizeLimit(int limit) {
-        return Math.max(1, limit);
+        return Math.max(1, Math.min(limit, 10));
     }
 
     public record SourceImportResponse(

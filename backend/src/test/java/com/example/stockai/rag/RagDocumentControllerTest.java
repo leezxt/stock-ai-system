@@ -6,21 +6,36 @@ import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import com.example.stockai.market.Market;
+import com.example.stockai.auth.AuthService;
+import com.example.stockai.auth.UserStore;
+import com.example.stockai.common.RequestGuard;
+
+import java.nio.file.Path;
 
 class RagDocumentControllerTest {
+    @TempDir
+    Path tempDir;
+
     private final InMemoryVectorStore vectorStore = new InMemoryVectorStore();
-    private final RagDocumentController controller = new RagDocumentController(
-        new DocumentIngestionService(),
-        new DocumentEmbeddingService(new HashEmbeddingModel()),
-        new DocumentRetriever(new HashEmbeddingModel(), vectorStore),
-        vectorStore
-    );
 
     @Test
     void importIndexesChunksAndRetrieveFindsThem() {
-        RagDocumentController.ImportResponse imported = controller.importDocument(new DocumentImportRequest(
+        AuthService authService = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
+        String token = authService.register("demo@example.com", "secret-password-123").token();
+        MockHttpServletRequest servletRequest = new MockHttpServletRequest();
+        servletRequest.addHeader("Authorization", "Bearer " + token);
+        RagDocumentController controller = new RagDocumentController(
+            new DocumentIngestionService(),
+            new DocumentEmbeddingService(new HashEmbeddingModel()),
+            new DocumentRetriever(new HashEmbeddingModel(), vectorStore),
+            vectorStore,
+            new RequestGuard(authService)
+        );
+        RagDocumentController.ImportResponse imported = controller.importDocument(servletRequest, new DocumentImportRequest(
             "AAPL",
             Market.US,
             DocumentType.NEWS,
@@ -30,7 +45,7 @@ class RagDocumentControllerTest {
             "Apple raised guidance after strong iPhone demand and better services margin."
         )).data();
 
-        List<RetrievedDocument> hits = controller.retrieve(new DocumentRetrieveRequest(
+        List<RetrievedDocument> hits = controller.retrieve(servletRequest, new DocumentRetrieveRequest(
             "iphone guidance",
             3,
             "AAPL",

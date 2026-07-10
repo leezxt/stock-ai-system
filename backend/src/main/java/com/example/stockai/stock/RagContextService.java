@@ -20,23 +20,31 @@ class RagContextService {
     }
 
     RagContext buildAnalysisContext(StockRecord stock, Integer horizonDays) {
-        return build(stock, horizonOrDefault(horizonDays), stock.symbol() + " technical outlook earnings guidance risk");
+        return buildAnalysisContext(stock, horizonDays, "");
+    }
+
+    RagContext buildAnalysisContext(StockRecord stock, Integer horizonDays, String ownerEmail) {
+        return build(stock, horizonOrDefault(horizonDays), stock.symbol() + " technical outlook earnings guidance risk", ownerEmail);
     }
 
     RagContext buildChatContext(StockRecord stock, Integer horizonDays, String message) {
-        return build(stock, horizonOrDefault(horizonDays), stock.symbol() + " " + message);
+        return buildChatContext(stock, horizonDays, message, "");
     }
 
-    private RagContext build(StockRecord stock, int horizonDays, String queryText) {
+    RagContext buildChatContext(StockRecord stock, Integer horizonDays, String message, String ownerEmail) {
+        return build(stock, horizonOrDefault(horizonDays), stock.symbol() + " " + message, ownerEmail);
+    }
+
+    private RagContext build(StockRecord stock, int horizonDays, String queryText, String ownerEmail) {
         return new RagContext(
             stock,
             stockService.technicalSummary(stock.market(), stock.symbol()),
             stockService.prediction(stock.market(), stock.symbol(), horizonDays),
-            retrieveEvidence(stock, queryText)
+            retrieveEvidence(stock, queryText, ownerEmail)
         );
     }
 
-    private List<com.example.stockai.rag.RetrievedDocument> retrieveEvidence(StockRecord stock, String queryText) {
+    private List<com.example.stockai.rag.RetrievedDocument> retrieveEvidence(StockRecord stock, String queryText, String ownerEmail) {
         return documentRetriever.retrieve(new DocumentRetrieveRequest(
             queryText,
             3,
@@ -45,10 +53,16 @@ class RagContextService {
             null,
             Instant.now().minus(365, ChronoUnit.DAYS),
             Instant.now()
-        ));
+        ), ownerEmail);
     }
 
     private static int horizonOrDefault(Integer horizonDays) {
-        return horizonDays == null || horizonDays <= 0 ? 5 : horizonDays;
+        if (horizonDays == null) {
+            return 5;
+        }
+        if (horizonDays < 1 || horizonDays > 60) {
+            throw new IllegalArgumentException("horizonDays must be between 1 and 60");
+        }
+        return horizonDays;
     }
 }

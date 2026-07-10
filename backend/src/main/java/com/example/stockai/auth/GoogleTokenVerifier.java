@@ -1,6 +1,7 @@
 package com.example.stockai.auth;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 import java.net.URI;
@@ -9,6 +10,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class GoogleTokenVerifier {
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private static final Pattern JSON_FIELD = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"");
     private final String clientId;
 
@@ -27,12 +29,18 @@ public class GoogleTokenVerifier {
     }
 
     public GoogleProfile verify(String credential) {
+        if (clientId.isBlank()) {
+            throw new ResponseStatusException(SERVICE_UNAVAILABLE, "google login is not configured");
+        }
         if (credential == null || credential.isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "google credential is required");
         }
         try {
             String encoded = URLEncoder.encode(credential, StandardCharsets.UTF_8);
-            HttpRequest request = HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/tokeninfo?id_token=" + encoded)).GET().build();
+            HttpRequest request = HttpRequest.newBuilder(URI.create("https://oauth2.googleapis.com/tokeninfo?id_token=" + encoded))
+                .timeout(Duration.ofSeconds(5))
+                .GET()
+                .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() != 200) {
                 throw new ResponseStatusException(UNAUTHORIZED, "google token verification failed");
@@ -44,7 +52,7 @@ public class GoogleTokenVerifier {
             if (email.isBlank() || !emailVerified) {
                 throw new ResponseStatusException(UNAUTHORIZED, "google account email is not verified");
             }
-            if (!clientId.isBlank() && !clientId.equals(audience)) {
+            if (!clientId.equals(audience)) {
                 throw new ResponseStatusException(UNAUTHORIZED, "google audience mismatch");
             }
             return new GoogleProfile(email.trim().toLowerCase(), readJsonField(body, "name"));
