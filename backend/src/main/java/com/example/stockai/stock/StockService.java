@@ -66,8 +66,9 @@ public class StockService {
 
     PriceHistoryResponse prices(Market market, String symbol) {
         StockRecord stock = get(market, symbol);
-        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices());
-        List<LocalDate> dates = recentTradingDates(prices.size(), ZoneId.of(stock.timezone()));
+        ZoneId marketZone = ZoneId.of(stock.timezone());
+        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), marketZone);
+        List<LocalDate> dates = recentTradingDates(prices.size(), marketZone);
         List<PriceHistoryResponse.PricePoint> points = IntStream.range(0, prices.size())
             .mapToObj(i -> new PriceHistoryResponse.PricePoint(dates.get(i).toString(), prices.get(i)))
             .toList();
@@ -76,7 +77,7 @@ public class StockService {
 
     TechnicalSummaryResponse technicalSummary(Market market, String symbol) {
         StockRecord stock = get(market, symbol);
-        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices());
+        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), ZoneId.of(stock.timezone()));
         return new TechnicalSummaryResponse(
             stock.symbol(),
             stock.market(),
@@ -92,7 +93,7 @@ public class StockService {
 
     PredictionResponse prediction(Market market, String symbol, int horizonDays) {
         StockRecord stock = get(market, symbol);
-        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices());
+        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), ZoneId.of(stock.timezone()));
         BigDecimal momentum = prices.size() < 2 || prices.get(0).signum() == 0
             ? BigDecimal.ZERO
             : prices.get(prices.size() - 1).divide(prices.get(0), 8, RoundingMode.HALF_UP).subtract(BigDecimal.ONE);
@@ -170,11 +171,11 @@ public class StockService {
         return BigDecimal.valueOf(Math.sqrt(variance / returns.length)).setScale(8, RoundingMode.HALF_UP);
     }
 
-    private static List<BigDecimal> oneMonthTradingPrices(List<BigDecimal> rawPrices) {
+    private static List<BigDecimal> oneMonthTradingPrices(List<BigDecimal> rawPrices, ZoneId zoneId) {
         List<BigDecimal> prices = rawPrices == null ? List.of() : rawPrices.stream()
             .filter(value -> value != null)
             .toList();
-        int targetSize = recentTradingDates(0, ZoneId.systemDefault()).size();
+        int targetSize = recentTradingDates(0, zoneId).size();
         if (prices.isEmpty()) {
             return List.of(BigDecimal.ZERO);
         }
