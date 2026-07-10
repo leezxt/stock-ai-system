@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Run Maven tests
+        working-directory: backend
+        run: mvn --batch-mode --no-transfer-progress test
+
+  project-checks:
+    name: Project checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate OpenAPI JSON
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          with Path("docs/openapi.json").open(encoding="utf-8") as source:
+              json.load(source)
+
+      - name: Validate frontend JavaScript syntax
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('frontend/index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
+
+          if (scripts.length === 0) {
+            throw new Error('No inline JavaScript found in frontend/index.html');
+          }
+
+          for (const [, source] of scripts) {
+            new Function(source);
+          }
+          NODE
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config --quiet
