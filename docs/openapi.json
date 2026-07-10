@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:8080/api/v1"
+      "url": "/api/v1"
     }
   ],
   "paths": {
@@ -22,10 +22,19 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["status", "timestamp", "providers"],
+                  "required": ["status", "timestamp", "database", "providers"],
                   "properties": {
                     "status": { "type": "string", "example": "UP" },
                     "timestamp": { "type": "string", "format": "date-time" },
+                    "database": {
+                      "type": "object",
+                      "required": ["configured", "healthy", "mode"],
+                      "properties": {
+                        "configured": { "type": "boolean" },
+                        "healthy": { "type": "boolean" },
+                        "mode": { "type": "string", "enum": ["POSTGRESQL", "FILE_FALLBACK"] }
+                      }
+                    },
                     "providers": {
                       "type": "object",
                       "required": ["openAiConfigured", "openAiModel", "alphaVantageConfigured", "twseEndpointConfigured", "twseStockDayAllUrl"],
@@ -121,6 +130,7 @@
     "/ai/analysis": {
       "post": {
         "summary": "Single-provider AI analysis",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
         "description": "Frontend reads the response `data.source` to decide whether AI output is live or `mock-ai`.",
         "requestBody": {
           "required": true,
@@ -138,6 +148,7 @@
     "/ai/model-comparison": {
       "post": {
         "summary": "Multi-model comparison",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
         "description": "Frontend reads each result `source` when building live or fallback provider labels.",
         "requestBody": {
           "required": true,
@@ -155,6 +166,7 @@
     "/ai/chat": {
       "post": {
         "summary": "AI chat scoped to selected stock",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
         "description": "Frontend reads the response `data.source` to show live or fallback chat output.",
         "requestBody": {
           "required": true,
@@ -172,12 +184,14 @@
     "/watchlist": {
       "get": {
         "summary": "Get watchlist",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
         "responses": {
           "200": { "description": "Watchlist stocks" }
         }
       },
       "post": {
         "summary": "Add watchlist item",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -194,6 +208,7 @@
     "/watchlist/{market}/{symbol}": {
       "delete": {
         "summary": "Remove watchlist item",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
         "parameters": [
           { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
           { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } }
@@ -206,6 +221,7 @@
     "/backtests": {
       "post": {
         "summary": "Run strategy backtest",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -221,6 +237,17 @@
     }
   },
   "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "stockai_session"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
     "schemas": {
       "Market": {
         "type": "string",
@@ -228,7 +255,7 @@
       },
       "AiProvider": {
         "type": "string",
-        "enum": ["OPENAI", "CLAUDE", "GEMINI", "DEEPSEEK"]
+        "enum": ["OPENAI", "GEMINI", "DEEPSEEK", "MIMO"]
       },
       "SymbolRequest": {
         "type": "object",
@@ -246,7 +273,7 @@
             "required": ["provider"],
             "properties": {
               "provider": { "$ref": "#/components/schemas/AiProvider" },
-              "horizonDays": { "type": "integer", "default": 5 }
+              "horizonDays": { "type": "integer", "minimum": 1, "maximum": 60, "default": 5 }
             }
           }
         ]
@@ -259,9 +286,10 @@
             "properties": {
               "providers": {
                 "type": "array",
+                "maxItems": 4,
                 "items": { "$ref": "#/components/schemas/AiProvider" }
               },
-              "horizonDays": { "type": "integer", "default": 5 }
+              "horizonDays": { "type": "integer", "minimum": 1, "maximum": 60, "default": 5 }
             }
           }
         ]
@@ -273,7 +301,7 @@
             "type": "object",
             "required": ["message"],
             "properties": {
-              "message": { "type": "string" }
+              "message": { "type": "string", "maxLength": 2000 }
             }
           }
         ]

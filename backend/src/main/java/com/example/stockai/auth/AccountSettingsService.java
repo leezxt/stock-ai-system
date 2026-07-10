@@ -5,6 +5,7 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -22,23 +23,29 @@ import com.example.stockai.common.UserScopedFileLocator;
 public class AccountSettingsService {
     private final Path root;
     private final JdbcTemplate jdbcTemplate;
+    private final SecretCipher secretCipher;
 
     public AccountSettingsService() {
-        this(Path.of(System.getProperty("stockai.account-settings.dir", "data/account-settings")), null);
+        this(Path.of(System.getProperty("stockai.account-settings.dir", "data/account-settings")), null, testCipher());
     }
 
     @Autowired
-    public AccountSettingsService(Optional<JdbcTemplate> jdbcTemplate) {
-        this(Path.of(System.getProperty("stockai.account-settings.dir", "data/account-settings")), jdbcTemplate.orElse(null));
+    public AccountSettingsService(Optional<JdbcTemplate> jdbcTemplate, SecretCipher secretCipher) {
+        this(Path.of(System.getProperty("stockai.account-settings.dir", "data/account-settings")), jdbcTemplate.orElse(null), secretCipher);
     }
 
     public AccountSettingsService(Path root) {
-        this(root, null);
+        this(root, null, testCipher());
     }
 
-    private AccountSettingsService(Path root, JdbcTemplate jdbcTemplate) {
+    public AccountSettingsService(Path root, SecretCipher secretCipher) {
+        this(root, null, secretCipher);
+    }
+
+    private AccountSettingsService(Path root, JdbcTemplate jdbcTemplate, SecretCipher secretCipher) {
         this.root = root;
         this.jdbcTemplate = jdbcTemplate;
+        this.secretCipher = secretCipher;
     }
 
     public synchronized AccountSettingsView get(String email) {
@@ -58,19 +65,19 @@ public class AccountSettingsService {
     }
 
     public synchronized String openAiApiKey(String email) {
-        return normalizeSecret(load(email).getProperty("openAiApiKey"));
+        return secretCipher.decrypt(normalizeSecret(load(email).getProperty("openAiApiKey")));
     }
 
     public synchronized String geminiApiKey(String email) {
-        return normalizeSecret(load(email).getProperty("geminiApiKey"));
+        return secretCipher.decrypt(normalizeSecret(load(email).getProperty("geminiApiKey")));
     }
 
     public synchronized String deepSeekApiKey(String email) {
-        return normalizeSecret(load(email).getProperty("deepSeekApiKey"));
+        return secretCipher.decrypt(normalizeSecret(load(email).getProperty("deepSeekApiKey")));
     }
 
     public synchronized String mimoApiKey(String email) {
-        return normalizeSecret(load(email).getProperty("mimoApiKey"));
+        return secretCipher.decrypt(normalizeSecret(load(email).getProperty("mimoApiKey")));
     }
 
     private AccountSettingsView toView(Properties properties) {
@@ -102,15 +109,16 @@ public class AccountSettingsService {
     }
 
     private void save(String email, Properties properties) {
+        Properties encrypted = encryptedCopy(properties);
         if (jdbcTemplate != null) {
-            saveToDatabase(email, properties);
+            saveToDatabase(email, encrypted);
             return;
         }
         Path file = fileForSave(email);
         try {
             Files.createDirectories(root);
             StringWriter writer = new StringWriter();
-            properties.store(writer, null);
+            encrypted.store(writer, null);
             AtomicFileWriter.writeString(file, writer.toString());
         } catch (IOException ex) {
             throw new IllegalStateException("cannot save account settings: " + file, ex);
@@ -158,7 +166,7 @@ public class AccountSettingsService {
             normalizeSecret(properties.getProperty("geminiApiKey")),
             normalizeSecret(properties.getProperty("deepSeekApiKey")),
             normalizeSecret(properties.getProperty("mimoApiKey")),
-            updatedAt
+            Timestamp.from(updatedAt)
         );
     }
 
@@ -213,6 +221,22 @@ public class AccountSettingsService {
             return offsetDateTime.toInstant().toString();
         }
         return value == null ? "" : value.toString();
+    }
+
+    private Properties encryptedCopy(Properties source) {
+        Properties encrypted = new Properties();
+        encrypted.putAll(source);
+        for (String key : List.of("openAiApiKey", "geminiApiKey", "deepSeekApiKey", "mimoApiKey")) {
+            String value = normalizeSecret(encrypted.getProperty(key));
+            if (!value.isBlank()) {
+                encrypted.setProperty(key, secretCipher.encrypt(value));
+            }
+        }
+        return encrypted;
+    }
+
+    private static SecretCipher testCipher() {
+        return new SecretCipher("stock-ai-test-encryption-key-32-bytes-minimum");
     }
 
     public record AccountSettingsUpdate(String preferredProvider, String openAiApiKey, String geminiApiKey, String deepSeekApiKey, String mimoApiKey) {}

@@ -66,8 +66,9 @@ public class StockService {
 
     PriceHistoryResponse prices(Market market, String symbol) {
         StockRecord stock = get(market, symbol);
-        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices());
-        List<LocalDate> dates = recentTradingDates(prices.size(), ZoneId.of(stock.timezone()));
+        ZoneId marketZone = ZoneId.of(stock.timezone());
+        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), marketZone);
+        List<LocalDate> dates = recentTradingDates(prices.size(), marketZone);
         List<PriceHistoryResponse.PricePoint> points = IntStream.range(0, prices.size())
             .mapToObj(i -> new PriceHistoryResponse.PricePoint(dates.get(i).toString(), prices.get(i)))
             .toList();
@@ -76,31 +77,37 @@ public class StockService {
 
     TechnicalSummaryResponse technicalSummary(Market market, String symbol) {
         StockRecord stock = get(market, symbol);
+        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), ZoneId.of(stock.timezone()));
         return new TechnicalSummaryResponse(
             stock.symbol(),
             stock.market(),
-            stock.lastPrice().multiply(new BigDecimal("0.99")),
-            stock.lastPrice().multiply(new BigDecimal("0.965")),
-            stock.lastPrice().multiply(new BigDecimal("0.928")),
-            new BigDecimal("62.5"),
-            stock.changePercent().signum() >= 0 ? "BULLISH" : "NEUTRAL",
-            stock.lastPrice().multiply(new BigDecimal("0.026")),
+            movingAverage(prices, 5),
+            movingAverage(prices, 20),
+            movingAverage(prices, 60),
+            rsi(prices, 14),
+            ema(prices, 12).compareTo(ema(prices, 26)) >= 0 ? "BULLISH" : "BEARISH",
+            averageCloseRange(prices, 14),
             Instant.now()
         );
     }
 
     PredictionResponse prediction(Market market, String symbol, int horizonDays) {
         StockRecord stock = get(market, symbol);
-        BigDecimal upProbability = clamp(new BigDecimal("0.58").add(stock.changePercent().divide(new BigDecimal("40"))), new BigDecimal("0.42"), new BigDecimal("0.78"));
+        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), ZoneId.of(stock.timezone()));
+        BigDecimal momentum = prices.size() < 2 || prices.get(0).signum() == 0
+            ? BigDecimal.ZERO
+            : prices.get(prices.size() - 1).divide(prices.get(0), 8, RoundingMode.HALF_UP).subtract(BigDecimal.ONE);
+        BigDecimal volatility = closeReturnVolatility(prices);
+        BigDecimal upProbability = clamp(new BigDecimal("0.50").add(momentum.multiply(new BigDecimal("2.0"))), new BigDecimal("0.30"), new BigDecimal("0.70"));
         return new PredictionResponse(
             stock.symbol(),
             stock.market(),
             horizonDays,
             upProbability,
-            stock.changePercent().divide(new BigDecimal("100")).multiply(new BigDecimal("0.8")),
-            new BigDecimal("0.032"),
-            stock.changePercent().abs().compareTo(new BigDecimal("2.5")) > 0 ? "HIGH" : "MEDIUM",
-            "mock-xgboost-v0.1",
+            momentum.multiply(BigDecimal.valueOf(Math.min(horizonDays, 60))).divide(BigDecimal.valueOf(Math.max(1, prices.size())), 8, RoundingMode.HALF_UP),
+            volatility,
+            volatility.compareTo(new BigDecimal("0.03")) > 0 ? "HIGH" : volatility.compareTo(new BigDecimal("0.015")) > 0 ? "MEDIUM" : "LOW",
+            "heuristic-momentum-v1",
             Instant.now()
         );
     }
@@ -109,11 +116,66 @@ public class StockService {
         return value.max(min).min(max);
     }
 
-    private static List<BigDecimal> oneMonthTradingPrices(List<BigDecimal> rawPrices) {
+    private static BigDecimal movingAverage(List<BigDecimal> prices, int window) {
+        int start = Math.max(0, prices.size() - window);
+        return prices.subList(start, prices.size()).stream()
+            .reduce(BigDecimal.ZERO, BigDecimal::add)
+            .divide(BigDecimal.valueOf(prices.size() - start), 6, RoundingMode.HALF_UP)
+            .stripTrailingZeros();
+    }
+
+    private static BigDecimal ema(List<BigDecimal> prices, int window) {
+        double alpha = 2.0 / (window + 1.0);
+        double value = prices.get(0).doubleValue();
+        for (int i = 1; i < prices.size(); i++) {
+            value = alpha * prices.get(i).doubleValue() + (1.0 - alpha) * value;
+        }
+        return BigDecimal.valueOf(value);
+    }
+
+    private static BigDecimal rsi(List<BigDecimal> prices, int window) {
+        int start = Math.max(1, prices.size() - window);
+        double gains = 0;
+        double losses = 0;
+        for (int i = start; i < prices.size(); i++) {
+            double delta = prices.get(i).subtract(prices.get(i - 1)).doubleValue();
+            if (delta >= 0) gains += delta; else losses -= delta;
+        }
+        if (gains == 0 && losses == 0) return new BigDecimal("50");
+        if (losses == 0) return new BigDecimal("100");
+        return BigDecimal.valueOf(100.0 - (100.0 / (1.0 + gains / losses))).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal averageCloseRange(List<BigDecimal> prices, int window) {
+        int start = Math.max(1, prices.size() - window);
+        if (prices.size() < 2) return BigDecimal.ZERO;
+        BigDecimal total = BigDecimal.ZERO;
+        for (int i = start; i < prices.size(); i++) {
+            total = total.add(prices.get(i).subtract(prices.get(i - 1)).abs());
+        }
+        return total.divide(BigDecimal.valueOf(prices.size() - start), 6, RoundingMode.HALF_UP).stripTrailingZeros();
+    }
+
+    private static BigDecimal closeReturnVolatility(List<BigDecimal> prices) {
+        if (prices.size() < 2) return BigDecimal.ZERO;
+        double[] returns = new double[prices.size() - 1];
+        double mean = 0;
+        for (int i = 1; i < prices.size(); i++) {
+            double previous = prices.get(i - 1).doubleValue();
+            returns[i - 1] = previous == 0 ? 0 : prices.get(i).doubleValue() / previous - 1.0;
+            mean += returns[i - 1];
+        }
+        mean /= returns.length;
+        double variance = 0;
+        for (double value : returns) variance += Math.pow(value - mean, 2);
+        return BigDecimal.valueOf(Math.sqrt(variance / returns.length)).setScale(8, RoundingMode.HALF_UP);
+    }
+
+    private static List<BigDecimal> oneMonthTradingPrices(List<BigDecimal> rawPrices, ZoneId zoneId) {
         List<BigDecimal> prices = rawPrices == null ? List.of() : rawPrices.stream()
             .filter(value -> value != null)
             .toList();
-        int targetSize = recentTradingDates(0, ZoneId.systemDefault()).size();
+        int targetSize = recentTradingDates(0, zoneId).size();
         if (prices.isEmpty()) {
             return List.of(BigDecimal.ZERO);
         }

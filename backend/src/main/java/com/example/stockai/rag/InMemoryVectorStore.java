@@ -65,10 +65,11 @@ public class InMemoryVectorStore implements VectorStore {
             DocumentChunk chunk = item.chunk();
             jdbcTemplate.update("""
                 INSERT INTO stockai_document_chunks (
-                    chunk_id, symbol, market, doc_type, title, source, published_at, content, embedding_model, embedding, updated_at
+                    chunk_id, owner_email, symbol, market, doc_type, title, source, published_at, content, embedding_model, embedding, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::vector, now())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::vector, now())
                 ON CONFLICT (chunk_id) DO UPDATE SET
+                    owner_email = EXCLUDED.owner_email,
                     symbol = EXCLUDED.symbol,
                     market = EXCLUDED.market,
                     doc_type = EXCLUDED.doc_type,
@@ -81,6 +82,7 @@ public class InMemoryVectorStore implements VectorStore {
                     updated_at = now()
                 """,
                 chunk.chunkId(),
+                chunk.ownerEmail(),
                 chunk.symbol(),
                 chunk.market().name(),
                 chunk.docType().name(),
@@ -99,11 +101,13 @@ public class InMemoryVectorStore implements VectorStore {
         String vector = toPgVector(query.embedding());
         params.add(vector);
         StringBuilder sql = new StringBuilder("""
-            SELECT chunk_id, symbol, market, doc_type, title, source, published_at, content, embedding_model,
+            SELECT chunk_id, owner_email, symbol, market, doc_type, title, source, published_at, content, embedding_model,
                    1 - (embedding <=> ?::vector) AS score
             FROM stockai_document_chunks
             WHERE 1 = 1
             """);
+        sql.append(" AND owner_email = ?");
+        params.add(query.ownerEmail());
         if (query.symbol() != null) {
             sql.append(" AND lower(symbol) = lower(?)");
             params.add(query.symbol());
@@ -130,6 +134,7 @@ public class InMemoryVectorStore implements VectorStore {
         return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> {
             DocumentChunk chunk = new DocumentChunk(
                 rs.getString("chunk_id"),
+                rs.getString("owner_email"),
                 rs.getString("symbol"),
                 com.example.stockai.market.Market.valueOf(rs.getString("market")),
                 DocumentType.valueOf(rs.getString("doc_type")),
@@ -144,6 +149,9 @@ public class InMemoryVectorStore implements VectorStore {
 
     private static boolean matches(VectorDocument document, VectorSearchQuery query) {
         DocumentChunk chunk = document.chunk();
+        if (!query.ownerEmail().equalsIgnoreCase(chunk.ownerEmail())) {
+            return false;
+        }
         if (query.symbol() != null && !query.symbol().equalsIgnoreCase(chunk.symbol())) {
             return false;
         }

@@ -46,9 +46,9 @@ class ApiKeyHeaderResolverTest {
 
     @Test
     void resolvesStoredDeepSeekKeyForLoggedInUser() {
-        AuthService authService = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret", 3600);
+        AuthService authService = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
         AccountSettingsService accountSettingsService = new AccountSettingsService(tempDir.resolve("account-settings"));
-        AuthService.AuthResult auth = authService.register("deepseek@example.test", "Passw0rd!");
+        AuthService.AuthResult auth = authService.register("deepseek@example.test", "Passw0rd!-secure");
         accountSettingsService.update(
             auth.user().email(),
             new AccountSettingsService.AccountSettingsUpdate("DEEPSEEK", null, null, "stored-deepseek", null)
@@ -63,9 +63,9 @@ class ApiKeyHeaderResolverTest {
 
     @Test
     void resolvesStoredMimoKeyForLoggedInUser() {
-        AuthService authService = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret", 3600);
+        AuthService authService = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
         AccountSettingsService accountSettingsService = new AccountSettingsService(tempDir.resolve("account-settings"));
-        AuthService.AuthResult auth = authService.register("mimo@example.test", "Passw0rd!");
+        AuthService.AuthResult auth = authService.register("mimo@example.test", "Passw0rd!-secure");
         accountSettingsService.update(
             auth.user().email(),
             new AccountSettingsService.AccountSettingsUpdate("MIMO", null, null, null, "stored-mimo")
@@ -80,7 +80,7 @@ class ApiKeyHeaderResolverTest {
 
     private ApiKeyHeaderResolver resolver() {
         return new ApiKeyHeaderResolver(
-            new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret", 3600),
+            new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600),
             new AccountSettingsService(tempDir.resolve("account-settings"))
         );
     }

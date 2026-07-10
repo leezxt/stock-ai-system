@@ -12,11 +12,14 @@ try {
 
 $providers = $health.providers
 $failed = $false
+$seed = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+$authBody = @{ email = "source-smoke-$seed@example.test"; password = "Passw0rd!-smoke-$seed" } | ConvertTo-Json
+Invoke-RestMethod -Uri "$baseUrl/auth/register" -Method Post -ContentType "application/json" -Body $authBody -SessionVariable webSession -TimeoutSec 15 | Out-Null
 
 function Invoke-SourceFetch($Label, $Path, $Body) {
   try {
     $json = $Body | ConvertTo-Json
-    $response = Invoke-RestMethod -Uri "$baseUrl$Path" -Method Post -ContentType "application/json" -Body $json -TimeoutSec 45
+    $response = Invoke-RestMethod -Uri "$baseUrl$Path" -Method Post -WebSession $webSession -ContentType "application/json" -Body $json -TimeoutSec 45
     $count = [int]$response.data.documentCount
     $chunks = [int]$response.data.chunkCount
     $adapter = $response.data.adapter

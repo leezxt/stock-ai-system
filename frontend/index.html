@@ -810,7 +810,7 @@
       <section class="grid cols-4">
         <div class="card"><h3>最新價格</h3><div class="metric" id="price"></div><p id="change"></p></div>
         <div class="card"><h3>AI 共識分數</h3><div class="metric" id="consensus"></div><p class="muted" id="consensusText"></p></div>
-        <div class="card"><h3>上漲機率</h3><div class="metric" id="upProb"></div><p class="muted">mock-xgboost-v0.1 · 5 日</p></div>
+        <div class="card"><h3>上漲機率</h3><div class="metric" id="upProb"></div><p class="muted">heuristic-momentum-v1 · 5 日</p></div>
         <div class="card"><h3>風險等級</h3><div class="metric" id="risk"></div><p class="muted" id="riskText"></p></div>
       </section>
 
@@ -982,7 +982,7 @@
                 <option value="mock">模擬資料</option>
                 <option value="real">真實 API</option>
               </select>
-              <input id="apiBaseUrl" value="http://localhost:8080/api/v1" aria-label="API 基底網址" />
+              <input id="apiBaseUrl" value="/api/v1" aria-label="API 基底網址" />
               <button id="saveSettings">儲存設定</button>
               <button id="testHealth">測試 /health</button>
             </div>
@@ -1008,7 +1008,7 @@
           </div>
           <div class="grid cols-3" style="margin-top:8px">
             <input id="authEmail" type="email" placeholder="email@example.com" aria-label="帳號 Email" />
-            <input id="authPassword" type="password" placeholder="至少 6 碼密碼" aria-label="帳號密碼" />
+            <input id="authPassword" type="password" placeholder="至少 12 碼密碼" aria-label="帳號密碼" />
             <div class="watch-actions">
               <button id="registerAuth">註冊</button>
               <button id="loginAuth">登入</button>
@@ -1271,6 +1271,9 @@
       const params = new URLSearchParams(location.search);
       try {
         const settings = { ...defaultSettings(), ...(JSON.parse(localStorage.getItem("stockAiSettings")) || {}) };
+        if (!["localhost", "127.0.0.1"].includes(location.hostname) && /^https?:\/\/localhost(?::\d+)?/i.test(settings.apiBaseUrl || "")) {
+          settings.apiBaseUrl = "/api/v1";
+        }
         if (params.get("mode")) settings.mode = params.get("mode");
         if (params.get("apiBaseUrl")) settings.apiBaseUrl = params.get("apiBaseUrl").replace(/\/+$/, "");
         return settings;
@@ -1285,7 +1288,7 @@
     function defaultSettings() {
       return {
         mode: "real",
-        apiBaseUrl: "http://localhost:8080/api/v1",
+        apiBaseUrl: location.protocol === "file:" ? "http://localhost:8080/api/v1" : "/api/v1",
         health: "未測試",
         lastDocumentImport: "尚未匯入文件",
         lastSourceImport: "尚未從來源抓取文件",
@@ -1311,14 +1314,22 @@
     }
 
     function saveSettings() {
-      localStorage.setItem("stockAiSettings", JSON.stringify(state.settings));
+      const persisted = {
+        ...state.settings,
+        authToken: state.settings.authToken ? "cookie" : "",
+        openAiApiKey: "",
+        geminiApiKey: "",
+        deepSeekApiKey: "",
+        mimoApiKey: "",
+        alphaVantageApiKey: "",
+        finMindApiToken: "",
+        fmpApiKey: ""
+      };
+      localStorage.setItem("stockAiSettings", JSON.stringify(persisted));
     }
 
     function authHeaders(baseHeaders = {}) {
       const headers = { ...baseHeaders };
-      if (state.settings.authToken) {
-        headers.Authorization = `Bearer ${state.settings.authToken}`;
-      }
       if (state.settings.openAiApiKey) {
         headers["X-OpenAI-Api-Key"] = state.settings.openAiApiKey;
       }
@@ -1352,7 +1363,7 @@
     }
 
     async function apiGet(path) {
-      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
+      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
       if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
@@ -1360,7 +1371,7 @@
     }
 
     async function apiGetOptional(path) {
-      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
+      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
       if (!response.ok) return null;
@@ -1370,6 +1381,7 @@
     async function apiPost(path, body) {
       const response = await fetch(`${state.settings.apiBaseUrl}${path}`, {
         method: "POST",
+        credentials: "same-origin",
         headers: authHeaders({ "content-type": "application/json", Accept: "application/json" }),
         body: JSON.stringify(body)
       }).catch(error => {
@@ -1382,6 +1394,7 @@
     async function apiPut(path, body) {
       const response = await fetch(`${state.settings.apiBaseUrl}${path}`, {
         method: "PUT",
+        credentials: "same-origin",
         headers: authHeaders({ "content-type": "application/json", Accept: "application/json" }),
         body: JSON.stringify(body)
       }).catch(error => {
@@ -1393,7 +1406,7 @@
 
     async function refreshHealthStatus(baseUrlOverride) {
       const baseUrl = (baseUrlOverride || state.settings.apiBaseUrl || "").replace(/\/+$/, "");
-      const response = await fetch(`${baseUrl}/health`, { headers: authHeaders({ Accept: "application/json" }) });
+      const response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
       const body = await response.json().catch(() => ({}));
       state.settings.health = response.ok ? `OK ${response.status}` : `HTTP ${response.status}`;
       state.settings.providerStatus = body.providers || body.data?.providers || null;
@@ -1409,7 +1422,7 @@
     }
 
     function persistAuth(result) {
-      state.settings.authToken = result?.token || "";
+      state.settings.authToken = result ? "cookie" : "";
       state.settings.authUserEmail = result?.user?.email || "";
       state.settings.authExpiresAt = result?.expiresAt || 0;
       state.settings.authProvider = result?.user?.authProvider || "";
@@ -1710,7 +1723,10 @@
       }
     }
 
-    function logoutAuth() {
+    async function logoutAuth() {
+      try {
+        if (state.settings.authToken) await apiPost("/auth/logout", {});
+      } catch {}
       persistAuth(null);
       state.watch = loadWatch();
       state.settings.openAiApiKey = "";
@@ -1718,7 +1734,7 @@
       state.settings.deepSeekApiKey = "";
       state.settings.mimoApiKey = "";
       state.provider = "OPENAI";
-      setAuthMessage("已登出，改回訪客自選股。", false);
+      setAuthMessage("已登出。", false);
       renderSettings();
       renderWatch();
     }
@@ -2490,7 +2506,7 @@
         "ATR14": `${num(metrics.atr14)} · 約價格 ${pct(metrics.atrPct)}`,
         "資料來源": s.source || "mock",
         "預期報酬": pct(metrics.expectedReturn),
-        "模型版本": s.prediction?.modelVersion || "mock-xgboost-v0.1"
+        "模型版本": s.prediction?.modelVersion || "heuristic-momentum-v1"
       });
       document.getElementById("techTable").innerHTML = rows({ MA5: num(s.tech.MA5), MA20: num(s.tech.MA20), MA60: num(s.tech.MA60), RSI14: s.tech.RSI14.toFixed(1), MACD: trendLabel(s.tech.MACD), ATR14: num(s.tech.ATR14) });
       document.getElementById("providerLabel").textContent = `${state.provider} / ${analysisSource}`;
@@ -2875,6 +2891,7 @@
         try {
           await fetch(`${state.settings.apiBaseUrl}/watchlist/${market}/${encodeURIComponent(symbol)}`, {
             method: "DELETE",
+            credentials: "same-origin",
             headers: authHeaders({ Accept: "application/json" })
           });
           state.settings.lastDataLoad = `自選股已移除 ${symbol}`;

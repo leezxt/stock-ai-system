@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -71,7 +72,7 @@ public class UserStore {
                 jdbcTemplate.update("""
                     INSERT INTO stockai_users (email, password_salt, password_hash, created_at, auth_provider)
                     VALUES (?, ?, ?, ?, ?)
-                    """, user.email(), user.passwordSalt(), user.passwordHash(), user.createdAt(), user.authProvider());
+                    """, user.email(), user.passwordSalt(), user.passwordHash(), Timestamp.from(user.createdAt()), user.authProvider());
             } catch (DuplicateKeyException ex) {
                 throw new ResponseStatusException(CONFLICT, "email already registered", ex);
             }
@@ -97,7 +98,7 @@ public class UserStore {
                 INSERT INTO stockai_users (email, password_salt, password_hash, created_at, auth_provider)
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT (email) DO NOTHING
-                """, user.email(), user.passwordSalt(), user.passwordHash(), user.createdAt(), user.authProvider());
+                """, user.email(), user.passwordSalt(), user.passwordHash(), Timestamp.from(user.createdAt()), user.authProvider());
             return find(email).orElse(user);
         }
         UserRecord existing = users.get(email);

@@ -6,6 +6,16 @@ Base URL:
 http://localhost:8080/api/v1
 ```
 
+公開部署時前端使用同源 `/api/v1`。
+
+## Authentication and limits
+
+- 登入／註冊成功後由後端設定 `HttpOnly; SameSite=Lax` 的 `stockai_session` Cookie。
+- CLI 仍可使用 `Authorization: Bearer <token>`；瀏覽器前端不讀取或保存 token。
+- AI、backtest、watchlist、account settings、RAG import/retrieve 與 document source fetch 均要求登入。
+- 模型比較最多 4 個 provider、chat 最多 2,000 字、RAG 文件最多 200,000 字、`topK` 最大 20。
+- RAG 文件依登入 email 隔離；跨帳號不會互相檢索。
+
 All responses may be either direct JSON or wrapped as:
 
 ```json
@@ -159,7 +169,7 @@ GET /stocks/{market}/{symbol}/prediction?horizonDays=5
     "expectedReturn": 0.01712,
     "volatility": 0.032,
     "riskLevel": "MEDIUM",
-    "modelVersion": "mock-xgboost-v0.1",
+    "modelVersion": "heuristic-momentum-v1",
     "generatedAt": "2026-07-04T00:00:00.000Z"
   }
 }

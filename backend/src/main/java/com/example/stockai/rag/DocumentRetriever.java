@@ -15,6 +15,10 @@ public class DocumentRetriever {
     }
 
     public List<RetrievedDocument> retrieve(DocumentRetrieveRequest request) {
+        return retrieve(request, "");
+    }
+
+    public List<RetrievedDocument> retrieve(DocumentRetrieveRequest request, String ownerEmail) {
         VectorSearchQuery query = new VectorSearchQuery(
             embeddingModel.embed(request.queryText()),
             request.topK(),
@@ -22,7 +26,8 @@ public class DocumentRetriever {
             request.market(),
             request.docType(),
             request.publishedFrom(),
-            request.publishedTo()
+            request.publishedTo(),
+            ownerEmail
         );
         return vectorStore.search(query).stream()
             .map(hit -> toRetrievedDocument(hit.document(), hit.score()))

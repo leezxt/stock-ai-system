@@ -39,4 +39,19 @@ class DocumentRetrieverTest {
         assertThat(hits.get(0).snippet()).contains("Apple iPhone demand");
         assertThat(hits.get(0).score()).isGreaterThan(0);
     }
+
+    @Test
+    void isolatesDocumentsByOwner() {
+        InMemoryVectorStore store = new InMemoryVectorStore();
+        HashEmbeddingModel model = new HashEmbeddingModel();
+        store.upsert(new DocumentEmbeddingService(model).embed(List.of(
+            new DocumentChunk("owner-a", "a@example.com", "AAPL", Market.US, DocumentType.NEWS, "Private A", "A", Instant.parse("2026-07-06T00:00:00Z"), "owner a evidence"),
+            new DocumentChunk("owner-b", "b@example.com", "AAPL", Market.US, DocumentType.NEWS, "Private B", "B", Instant.parse("2026-07-06T00:00:00Z"), "owner b evidence")
+        )));
+        DocumentRetriever retriever = new DocumentRetriever(model, store);
+        DocumentRetrieveRequest request = new DocumentRetrieveRequest("evidence", 10, "AAPL", Market.US, null, null, null);
+
+        assertThat(retriever.retrieve(request, "a@example.com")).extracting(RetrievedDocument::title).containsExactly("Private A");
+        assertThat(retriever.retrieve(request, "b@example.com")).extracting(RetrievedDocument::title).containsExactly("Private B");
+    }
 }

@@ -15,10 +15,10 @@ class AuthServiceTest {
 
     @Test
     void registerAndLoginIssueUsableToken() {
-        AuthService service = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret", 3600);
+        AuthService service = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
 
-        AuthService.AuthResult registered = service.register("demo@example.com", "secret123");
-        AuthService.AuthResult loggedIn = service.login("demo@example.com", "secret123");
+        AuthService.AuthResult registered = service.register("demo@example.com", "secret-password-123");
+        AuthService.AuthResult loggedIn = service.login("demo@example.com", "secret-password-123");
 
         assertThat(registered.user().email()).isEqualTo("demo@example.com");
         assertThat(loggedIn.token()).startsWith("ZGVtb0BleGFtcGxlLmNvbXw");
@@ -27,8 +27,8 @@ class AuthServiceTest {
 
     @Test
     void rejectsInvalidPassword() {
-        AuthService service = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret", 3600);
-        service.register("demo@example.com", "secret123");
+        AuthService service = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
+        service.register("demo@example.com", "secret-password-123");
 
         assertThatThrownBy(() -> service.login("demo@example.com", "wrongpass"))
             .isInstanceOf(ResponseStatusException.class)
@@ -37,7 +37,7 @@ class AuthServiceTest {
 
     @Test
     void googleLoginCreatesGoogleUser() {
-        AuthService service = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret", 3600);
+        AuthService service = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
 
         AuthService.AuthResult result = service.loginGoogleVerifiedEmail("google@example.com");
 

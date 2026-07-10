@@ -206,8 +206,20 @@ http://localhost:8080/app
 
 AI provider key 的行為分兩種：
 
-- 未登入：`OpenAI API Key` / `Gemini API Key` / `DeepSeek API Key` / `MIMO API Key` 存在瀏覽器 `localStorage`
-- 已登入：前端改走 `/api/v1/account/settings`，key 儲存在後端；設定 PostgreSQL 時會存入 `stockai_account_settings`，未設定時使用本機檔案 fallback
+- 未登入：Key 只保留在目前頁面的記憶體，重新整理即清除，不寫入 `localStorage`
+- 已登入：前端改走 `/api/v1/account/settings`；Key 以 AES-256-GCM 加密後存入 PostgreSQL 或本機 fallback 檔案
+
+登入使用 HttpOnly、SameSite Cookie；瀏覽器 JavaScript 不會取得實際 session token。AI、回測、watchlist、RAG 匯入／檢索與來源抓取端點均要求登入，並套用每使用者與 IP 的分鐘限流。
+
+正式環境必須設定：
+
+```text
+STOCKAI_AUTH_SECRET=<至少 32 字元的隨機值>
+STOCKAI_SECRETS_ENCRYPTION_KEY=<另一組至少 32 字元的隨機值>
+STOCKAI_CORS_ALLOWED_ORIGINS=https://your-domain.example
+```
+
+若未另外設定 `STOCKAI_SECRETS_ENCRYPTION_KEY`，系統會以 `STOCKAI_AUTH_SECRET` 經領域分離雜湊後作為相容 fallback；正式環境仍建議使用獨立密鑰。
 
 後端 AI key 解析順序：
 

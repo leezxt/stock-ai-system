@@ -37,6 +37,10 @@ $baseUrl = if ([string]::IsNullOrWhiteSpace($env:STOCK_AI_BASE_URL)) { "http://l
 
 Invoke-RestMethod -Uri "$baseUrl/health" -TimeoutSec 5 | Out-Null
 
+$seed = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+$authBody = @{ email = "openai-smoke-$seed@example.test"; password = "Passw0rd!-smoke-$seed" } | ConvertTo-Json
+Invoke-RestMethod -Uri "$baseUrl/auth/register" -Method Post -ContentType "application/json" -Body $authBody -SessionVariable webSession -TimeoutSec 15 | Out-Null
+
 $chatBody = @{
   market = "US"
   symbol = "AAPL"
@@ -44,7 +48,7 @@ $chatBody = @{
   message = "OpenAI smoke test. Reply with one short sentence."
 } | ConvertTo-Json
 
-$chat = Invoke-RestMethod -Uri "$baseUrl/ai/chat" -Method Post -ContentType "application/json" -Body $chatBody -TimeoutSec 45
+$chat = Invoke-RestMethod -Uri "$baseUrl/ai/chat" -Method Post -WebSession $webSession -ContentType "application/json" -Body $chatBody -TimeoutSec 45
 if ($chat.data.source -ne "openai-responses") {
   throw "OpenAI ai/chat live failed: $($chat.data.source). $((Get-OpenAiSmokeHint $chat.data.source))"
 }
@@ -56,7 +60,7 @@ $analysisBody = @{
   horizonDays = 5
 } | ConvertTo-Json
 
-$analysis = Invoke-RestMethod -Uri "$baseUrl/ai/analysis" -Method Post -ContentType "application/json" -Body $analysisBody -TimeoutSec 45
+$analysis = Invoke-RestMethod -Uri "$baseUrl/ai/analysis" -Method Post -WebSession $webSession -ContentType "application/json" -Body $analysisBody -TimeoutSec 45
 if ($analysis.data.source -ne "openai-responses") {
   throw "OpenAI ai/analysis live failed: $($analysis.data.source). $((Get-OpenAiSmokeHint $analysis.data.source))"
 }

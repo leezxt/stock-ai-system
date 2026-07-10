@@ -7,10 +7,11 @@ import org.junit.jupiter.api.Test;
 class HealthControllerTest {
     @Test
     void returnsHealth() {
-        HealthController.HealthResponse response = new HealthController().health();
+        HealthController.HealthResponse response = new HealthController().health().getBody();
 
         assertThat(response.status()).isEqualTo("UP");
         assertThat(response.timestamp()).isNotNull();
+        assertThat(response.database().mode()).isEqualTo("FILE_FALLBACK");
         assertThat(response.providers().openAiConfigured()).isFalse();
         assertThat(response.providers().openAiModel()).isEqualTo("gpt-5.5");
         assertThat(response.providers().deepSeekConfigured()).isFalse();
