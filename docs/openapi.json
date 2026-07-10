@@ -1,0 +1,301 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Stock AI MVP API",
+    "version": "0.1.0",
+    "description": "Contract used by the Stock AI frontend MVP."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080/api/v1"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Used by the frontend Settings tab to render provider readiness and OpenAI smoke-test hints.",
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "timestamp", "providers"],
+                  "properties": {
+                    "status": { "type": "string", "example": "UP" },
+                    "timestamp": { "type": "string", "format": "date-time" },
+                    "providers": {
+                      "type": "object",
+                      "required": ["openAiConfigured", "openAiModel", "alphaVantageConfigured", "twseEndpointConfigured", "twseStockDayAllUrl"],
+                      "properties": {
+                        "openAiConfigured": { "type": "boolean" },
+                        "openAiModel": { "type": "string", "example": "gpt-5.5" },
+                        "alphaVantageConfigured": { "type": "boolean" },
+                        "twseEndpointConfigured": { "type": "boolean" },
+                        "twseStockDayAllUrl": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/markets": {
+      "get": {
+        "summary": "Supported markets",
+        "responses": {
+          "200": {
+            "description": "US and TW markets"
+          }
+        }
+      }
+    },
+    "/stocks/{market}/search": {
+      "get": {
+        "summary": "Search stocks",
+        "parameters": [
+          { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
+          { "name": "query", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Search results" }
+        }
+      }
+    },
+    "/stocks/{market}/{symbol}/summary": {
+      "get": {
+        "summary": "Stock summary",
+        "description": "Frontend also reads `data.source` to decide whether market data is live or mock fallback.",
+        "parameters": [
+          { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Stock summary" }
+        }
+      }
+    },
+    "/stocks/{market}/{symbol}/prices": {
+      "get": {
+        "summary": "Price history",
+        "parameters": [
+          { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "range", "in": "query", "required": false, "schema": { "type": "string", "default": "1M" } }
+        ],
+        "responses": {
+          "200": { "description": "Price history" }
+        }
+      }
+    },
+    "/stocks/{market}/{symbol}/technical-summary": {
+      "get": {
+        "summary": "Technical summary",
+        "parameters": [
+          { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Technical indicators" }
+        }
+      }
+    },
+    "/stocks/{market}/{symbol}/prediction": {
+      "get": {
+        "summary": "Prediction",
+        "parameters": [
+          { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "horizonDays", "in": "query", "required": false, "schema": { "type": "integer", "default": 5 } }
+        ],
+        "responses": {
+          "200": { "description": "ML or mock prediction" }
+        }
+      }
+    },
+    "/ai/analysis": {
+      "post": {
+        "summary": "Single-provider AI analysis",
+        "description": "Frontend reads the response `data.source` to decide whether AI output is live or `mock-ai`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AiAnalysisRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "AI analysis result" }
+        }
+      }
+    },
+    "/ai/model-comparison": {
+      "post": {
+        "summary": "Multi-model comparison",
+        "description": "Frontend reads each result `source` when building live or fallback provider labels.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ModelComparisonRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Comparison result" }
+        }
+      }
+    },
+    "/ai/chat": {
+      "post": {
+        "summary": "AI chat scoped to selected stock",
+        "description": "Frontend reads the response `data.source` to show live or fallback chat output.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AiChatRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Chat response" }
+        }
+      }
+    },
+    "/watchlist": {
+      "get": {
+        "summary": "Get watchlist",
+        "responses": {
+          "200": { "description": "Watchlist stocks" }
+        }
+      },
+      "post": {
+        "summary": "Add watchlist item",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SymbolRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Added stock" }
+        }
+      }
+    },
+    "/watchlist/{market}/{symbol}": {
+      "delete": {
+        "summary": "Remove watchlist item",
+        "parameters": [
+          { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Deleted flag" }
+        }
+      }
+    },
+    "/backtests": {
+      "post": {
+        "summary": "Run strategy backtest",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BacktestRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Backtest result" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Market": {
+        "type": "string",
+        "enum": ["US", "TW"]
+      },
+      "AiProvider": {
+        "type": "string",
+        "enum": ["OPENAI", "CLAUDE", "GEMINI", "DEEPSEEK"]
+      },
+      "SymbolRequest": {
+        "type": "object",
+        "required": ["market", "symbol"],
+        "properties": {
+          "market": { "$ref": "#/components/schemas/Market" },
+          "symbol": { "type": "string" }
+        }
+      },
+      "AiAnalysisRequest": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SymbolRequest" },
+          {
+            "type": "object",
+            "required": ["provider"],
+            "properties": {
+              "provider": { "$ref": "#/components/schemas/AiProvider" },
+              "horizonDays": { "type": "integer", "default": 5 }
+            }
+          }
+        ]
+      },
+      "ModelComparisonRequest": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SymbolRequest" },
+          {
+            "type": "object",
+            "properties": {
+              "providers": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/AiProvider" }
+              },
+              "horizonDays": { "type": "integer", "default": 5 }
+            }
+          }
+        ]
+      },
+      "AiChatRequest": {
+        "allOf": [
+          { "$ref": "#/components/schemas/AiAnalysisRequest" },
+          {
+            "type": "object",
+            "required": ["message"],
+            "properties": {
+              "message": { "type": "string" }
+            }
+          }
+        ]
+      },
+      "BacktestRequest": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SymbolRequest" },
+          {
+            "type": "object",
+            "properties": {
+              "strategy": {
+                "type": "object",
+                "properties": {
+                  "minAiScore": { "type": "number", "default": 70 },
+                  "minUpProbability": { "type": "number", "default": 0.6 },
+                  "maxRiskLevel": { "type": "string", "default": "MEDIUM" }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+backend/target/
+backend/data/
+/data/
+.idea/
+local-env.cmd
+.env
+*.log
+backend/classpath.txt
+backend/backend.args
+backend/run-direct-backend.cmd

@@ -1,0 +1,10 @@
+.git
+.idea
+.env
+backend/target
+backend/data
+data
+backend*.log
+*.log
+local-env.cmd
+node_modules

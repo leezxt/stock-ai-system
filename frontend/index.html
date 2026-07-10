@@ -1,0 +1,3505 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stock AI 股市分析工作台</title>
+  <style>
+    :root {
+      --bg: #06131a;
+      --bg2: #0b1f29;
+      --panel: rgba(13, 28, 37, .74);
+      --panel2: rgba(18, 47, 55, .72);
+      --line: rgba(144, 202, 196, .18);
+      --line-strong: rgba(124, 246, 221, .42);
+      --text: #edf7ef;
+      --muted: #9eb7b4;
+      --cyan: #5ff3d2;
+      --blue: #6bbcff;
+      --red: #ff6b78;
+      --green: #64e89d;
+      --amber: #ffc857;
+      --violet: #c6a5ff;
+      --radius: 18px;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .36);
+      --glow: 0 0 34px rgba(95, 243, 210, .18);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(95, 243, 210, .16), transparent 28%),
+        radial-gradient(circle at 88% 18%, rgba(255, 200, 87, .11), transparent 27%),
+        radial-gradient(circle at 65% 82%, rgba(107, 188, 255, .14), transparent 31%),
+        linear-gradient(135deg, #041015 0%, var(--bg) 48%, #091a16 100%);
+      color: var(--text);
+      font-family: "Aptos Display", "Noto Sans TC", "Microsoft JhengHei UI", "Segoe UI", sans-serif;
+      letter-spacing: .01em;
+      overflow-x: hidden;
+    }
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -2;
+    }
+    body::before {
+      background-image:
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,.75), transparent 76%);
+      animation: gridDrift 18s linear infinite;
+    }
+    body::after {
+      z-index: -1;
+      background:
+        conic-gradient(from 210deg at 12% 18%, transparent, rgba(95,243,210,.14), transparent 24%),
+        conic-gradient(from 20deg at 90% 72%, transparent, rgba(255,200,87,.10), transparent 22%);
+      filter: blur(18px);
+      opacity: .85;
+      animation: auroraFloat 11s ease-in-out infinite alternate;
+    }
+    button, input, select { font: inherit; }
+    button {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.025)),
+        var(--panel2);
+      color: var(--text);
+      min-height: 38px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+      transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease;
+    }
+    button::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 20%, rgba(255,255,255,.22), transparent 44%);
+      transform: translateX(-130%);
+      transition: transform .55s ease;
+    }
+    button:hover::after { transform: translateX(130%); }
+    button:hover, button.active {
+      border-color: var(--line-strong);
+      color: #effffb;
+      transform: translateY(-1px);
+      box-shadow: var(--glow), inset 0 1px 0 rgba(255,255,255,.12);
+    }
+    button:disabled, input:disabled {
+      opacity: .62;
+      cursor: progress;
+    }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 252px 1fr; }
+    .side {
+      border-right: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(7, 29, 35, .92), rgba(4, 14, 19, .78)),
+        rgba(8, 21, 28, .86);
+      backdrop-filter: blur(22px);
+      padding: 22px 16px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      box-shadow: 16px 0 50px rgba(0,0,0,.22);
+    }
+    .brand {
+      font-size: 24px;
+      font-weight: 900;
+      margin-bottom: 26px;
+      letter-spacing: .05em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .brand::after {
+      content: "Real-time Strategy Lab";
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .12em;
+    }
+    .brand span {
+      color: var(--cyan);
+      text-shadow: 0 0 24px rgba(95, 243, 210, .5);
+    }
+    .nav button {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      text-align: left;
+      background: transparent;
+    }
+    .nav button.active {
+      background: linear-gradient(135deg, rgba(95, 243, 210, .16), rgba(107, 188, 255, .08));
+    }
+    .main { padding: 26px; max-width: 1540px; width: 100%; margin: 0 auto; animation: pageRise .72s ease both; }
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(3, 16, 21, .42);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 12px 34px rgba(0,0,0,.18);
+    }
+    .search {
+      display: grid;
+      grid-template-columns: 140px minmax(180px, 1fr) 130px;
+      gap: 8px;
+    }
+    select, input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(5, 19, 25, .72);
+      color: var(--text);
+      padding: 9px 10px;
+      min-height: 38px;
+      outline: none;
+      transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+    }
+    select:focus, input:focus, textarea:focus {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 4px rgba(95, 243, 210, .11);
+      background: rgba(9, 31, 39, .82);
+    }
+    .page-title { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .page-title > div {
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.025));
+      box-shadow: var(--shadow);
+      min-width: min(100%, 560px);
+    }
+    h1 {
+      font-size: clamp(30px, 4.2vw, 56px);
+      margin: 0 0 8px;
+      line-height: .96;
+      letter-spacing: -.045em;
+      background: linear-gradient(90deg, #ffffff, #b9fff1 42%, #ffe3a0);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    h2 { font-size: 18px; margin: 0 0 14px; letter-spacing: .02em; }
+    h3 { font-size: 12px; margin: 0 0 8px; color: var(--muted); font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+    p { margin: 0; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; gap: 12px; }
+    .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cols-2 { grid-template-columns: 1.45fr 1fr; }
+    .card {
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.095), rgba(255,255,255,.02)),
+        var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      min-width: 0;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      animation: cardIn .5s ease both;
+      transition: transform .24s ease, border-color .24s ease, box-shadow .24s ease;
+    }
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background:
+        radial-gradient(circle at 12% 0%, rgba(95, 243, 210, .12), transparent 28%),
+        linear-gradient(120deg, rgba(255,255,255,.10), transparent 22%, transparent 78%, rgba(255,255,255,.035));
+      opacity: .75;
+      pointer-events: none;
+    }
+    .card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at var(--mx, 50%) var(--my, 20%), rgba(95, 243, 210, .18), transparent 34%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .22s ease;
+    }
+    .card > * { position: relative; z-index: 1; }
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(95, 243, 210, .32);
+      box-shadow: 0 28px 80px rgba(0,0,0,.44), var(--glow);
+    }
+    .card:hover::after { opacity: 1; }
+    .metric { font-size: clamp(26px, 3vw, 38px); font-weight: 900; line-height: 1.03; letter-spacing: -.035em; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(9, 30, 36, .72);
+      border: 1px solid var(--line);
+      color: #c9d7e8;
+      font-size: 12px;
+      white-space: nowrap;
+      box-shadow: 0 0 22px rgba(95, 243, 210, .10);
+    }
+    .source-notice {
+      display: none;
+      margin: -6px 0 16px;
+      padding: 8px 10px;
+      border: 1px solid #5a4421;
+      border-radius: var(--radius);
+      background: #18140c;
+      color: #ffd98a;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .source-notice.active { display: block; }
+    .source-notice-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .source-notice-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .source-item {
+      padding: 8px;
+      border: 1px solid #3d3220;
+      border-radius: var(--radius);
+      background: rgba(0, 0, 0, .12);
+    }
+    .source-item strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #fff0c2;
+    }
+    .source-item p {
+      font-size: 12px;
+      color: #f6d89a;
+      line-height: 1.45;
+    }
+    .failed { color: var(--red); }
+    .up { color: var(--green); }
+    .down { color: var(--red); }
+    .tw.up { color: var(--red); }
+    .tw.down { color: var(--green); }
+    .warn { color: var(--amber); }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      padding: 3px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #0b1724;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .status-pill::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 12px currentColor;
+      animation: pulseDot 1.6s ease-in-out infinite;
+    }
+    .status-pill.good { color: var(--green); }
+    .status-pill.bad { color: var(--red); }
+    .status-pill.warn { color: var(--amber); }
+    .inline-key-actions {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .mini-action {
+      min-height: 24px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      border-color: rgba(95, 243, 210, .28);
+      background: rgba(95, 243, 210, .08);
+    }
+    .chart {
+      min-height: 360px;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      gap: 10px;
+    }
+    svg { width: 100%; height: 100%; display: block; }
+    #priceChart { height: 230px; }
+    .bars { display: grid; gap: 9px; }
+    .bar-row { display: grid; grid-template-columns: 78px 1fr 46px; gap: 8px; align-items: center; }
+    .track { height: 12px; background: rgba(5, 17, 24, .78); border-radius: 999px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
+    .fill { height: 100%; background: linear-gradient(90deg, var(--cyan), var(--blue), var(--violet)); border-radius: inherit; box-shadow: 0 0 18px rgba(95,243,210,.28); animation: fillSweep 1.1s ease both; }
+    .chart-legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(4, 16, 22, .56);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .legend-swatch {
+      width: 18px;
+      height: 3px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+    .chart-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .chart-stat {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 8px;
+      background:
+        linear-gradient(145deg, rgba(95, 243, 210, .08), rgba(255, 200, 87, .05)),
+        rgba(6, 23, 30, .66);
+    }
+    .chart-stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 3px;
+    }
+    .chart-stat strong {
+      display: block;
+      font-size: 15px;
+      color: #f4fffb;
+    }
+    .chart-insight {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid rgba(95, 243, 210, .18);
+      border-radius: 14px;
+      background: rgba(95, 243, 210, .06);
+      color: #dff8f2;
+      line-height: 1.55;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; font-weight: 600; }
+    td { font-size: 14px; }
+    .provider-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .provider-grid button { padding: 8px; }
+    .risk {
+      border-left: 4px solid var(--amber);
+      background: #191a19;
+      color: #ffe3a3;
+    }
+    .list { margin: 0; padding-left: 18px; color: #dbe6f3; }
+    .list li { margin: 5px 0; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+    .tabs button.active { background: linear-gradient(135deg, rgba(95,243,210,.20), rgba(255,200,87,.10)); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: tabReveal .42s ease both; }
+    .mobile-dock {
+      display: none;
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(10px + env(safe-area-inset-bottom));
+      z-index: 20;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid rgba(124, 246, 221, .24);
+      border-radius: 24px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.035)),
+        rgba(4, 16, 22, .82);
+      box-shadow: 0 22px 70px rgba(0,0,0,.46), 0 0 28px rgba(95, 243, 210, .13);
+      backdrop-filter: blur(22px);
+    }
+    .mobile-dock button {
+      min-height: 44px;
+      padding: 6px 8px;
+      border-radius: 18px;
+      font-size: 12px;
+      line-height: 1.15;
+    }
+    .mobile-dock button.active {
+      background: linear-gradient(135deg, rgba(95, 243, 210, .24), rgba(255, 200, 87, .12));
+      color: #f4fffb;
+    }
+    .interaction-toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 30;
+      max-width: min(360px, calc(100vw - 36px));
+      padding: 10px 14px;
+      border: 1px solid rgba(124, 246, 221, .28);
+      border-radius: 999px;
+      background:
+        linear-gradient(135deg, rgba(95, 243, 210, .14), rgba(255, 200, 87, .08)),
+        rgba(4, 16, 22, .9);
+      color: #edfff8;
+      box-shadow: 0 18px 58px rgba(0,0,0,.45), 0 0 22px rgba(95, 243, 210, .18);
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(12px) scale(.98);
+      pointer-events: none;
+      transition: opacity .22s ease, transform .22s ease;
+      backdrop-filter: blur(18px);
+    }
+    .interaction-toast.active {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    .key-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(1, 8, 12, .64);
+      backdrop-filter: blur(14px);
+    }
+    .key-modal.hidden { display: none; }
+    .key-modal-card {
+      width: min(520px, 100%);
+      border: 1px solid rgba(124, 246, 221, .24);
+      border-radius: 24px;
+      background:
+        linear-gradient(145deg, rgba(95, 243, 210, .13), rgba(255, 200, 87, .08)),
+        rgba(10, 28, 35, .96);
+      box-shadow: 0 30px 90px rgba(0,0,0,.56), 0 0 36px rgba(95, 243, 210, .12);
+      padding: 18px;
+      animation: modalPop .18s ease both;
+    }
+    .key-modal-card h3 {
+      margin-bottom: 8px;
+      color: #f4fffb;
+    }
+    .key-modal-card p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+    .key-modal-card input {
+      width: 100%;
+      margin-bottom: 12px;
+    }
+    @keyframes modalPop {
+      from { opacity: 0; transform: translateY(10px) scale(.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .watch-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .footer-note { margin-top: 14px; font-size: 12px; color: var(--muted); }
+    .analysis-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .analysis-box {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(6, 23, 30, .7);
+    }
+    .analysis-box strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+    .analysis-caption {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .analysis-panel {
+      padding: 10px 0 0;
+      border-top: 1px solid var(--line);
+    }
+    .analysis-conclusion {
+      margin-top: 12px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #0c1827;
+      line-height: 1.55;
+    }
+    .evidence-block {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .evidence-item {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(6, 23, 30, .7);
+      margin-top: 8px;
+      transition: transform .2s ease, border-color .2s ease;
+    }
+    .evidence-item:hover {
+      transform: translateX(3px);
+      border-color: rgba(95, 243, 210, .32);
+    }
+    .evidence-item strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .evidence-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .evidence-empty {
+      padding: 10px;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      color: var(--muted);
+      background: #0c1827;
+      line-height: 1.5;
+    }
+    .evidence-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 6px 0 8px;
+    }
+    .evidence-tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #0b1724;
+      color: #c9d7e8;
+      font-size: 11px;
+    }
+    .backtest-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .backtest-status {
+      margin: 10px 0 0;
+      min-height: 24px;
+    }
+    .hint-box {
+      margin-top: 12px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #0c1827;
+      line-height: 1.55;
+    }
+    .hint-box code {
+      font-family: Consolas, monospace;
+      font-size: 12px;
+    }
+      .source-actions {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+      }
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(5, 19, 25, .72);
+      color: var(--text);
+      padding: 9px 10px;
+      resize: vertical;
+      font: inherit;
+    }
+
+    .chart-line {
+      stroke-dasharray: 900;
+      stroke-dashoffset: 900;
+      animation: drawLine 1.1s cubic-bezier(.2,.7,.1,1) forwards;
+      filter: drop-shadow(0 0 12px rgba(95, 243, 210, .45));
+    }
+    .chart-area { opacity: 0; animation: fadeIn .8s ease .2s forwards; }
+    .chart-dot { transform-origin: center; animation: popDot .45s ease both; }
+    .is-refreshing .metric,
+    .is-refreshing #priceChart {
+      animation: dataFlash .55s ease;
+    }
+
+    @keyframes gridDrift {
+      from { background-position: 0 0; }
+      to { background-position: 42px 42px; }
+    }
+    @keyframes auroraFloat {
+      from { transform: translate3d(-1.5%, -1%, 0) scale(1); }
+      to { transform: translate3d(1.5%, 1%, 0) scale(1.04); }
+    }
+    @keyframes pageRise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(14px) scale(.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes tabReveal {
+      from { opacity: 0; transform: translateY(10px); filter: blur(4px); }
+      to { opacity: 1; transform: translateY(0); filter: blur(0); }
+    }
+    @keyframes drawLine {
+      to { stroke-dashoffset: 0; }
+    }
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+    @keyframes popDot {
+      from { opacity: 0; transform: scale(.4); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    @keyframes fillSweep {
+      from { width: 0; }
+    }
+    @keyframes dataFlash {
+      0% { filter: brightness(1); }
+      40% { filter: brightness(1.45) drop-shadow(0 0 18px rgba(95, 243, 210, .35)); }
+      100% { filter: brightness(1); }
+    }
+    @keyframes pulseDot {
+      0%, 100% { opacity: .65; transform: scale(.9); }
+      50% { opacity: 1; transform: scale(1.22); }
+    }
+
+    @media (pointer: coarse) {
+      .card:hover { transform: none; }
+      .card::after { display: none; }
+    }
+
+    @media (max-width: 1040px) {
+      .app { grid-template-columns: 1fr; }
+      .side { position: relative; height: auto; }
+      .nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .nav button { margin: 0; justify-content: center; }
+      .topbar, .search, .cols-4, .cols-3, .cols-2, .provider-grid, .source-notice-grid, .analysis-summary, .backtest-summary, .source-actions { grid-template-columns: 1fr; }
+      .page-title { align-items: start; flex-direction: column; }
+    }
+    @media (max-width: 760px) {
+      .main { padding-bottom: calc(98px + env(safe-area-inset-bottom)); }
+      .tabs { display: none; }
+      .mobile-dock { display: grid; }
+      .interaction-toast {
+        left: 18px;
+        right: 18px;
+        bottom: calc(84px + env(safe-area-inset-bottom));
+        text-align: center;
+      }
+    }
+    @media (max-width: 560px) {
+      .main { padding: 18px; }
+      .main { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+      .side { padding: 18px 14px; }
+      .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .source-notice-head { align-items: flex-start; flex-direction: column; }
+      .source-notice .status-pill { white-space: normal; justify-content: flex-start; }
+      .chart { min-height: 420px; }
+      #priceChart { height: 220px; }
+      .chart-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: .001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">Stock <span>AI</span></div>
+      <nav class="nav" aria-label="主選單">
+        <button class="active" data-tab="dashboard">▦ 總覽</button>
+        <button data-tab="analysis">⌁ 個股分析</button>
+        <button data-tab="compare">≋ 模型比較</button>
+        <button data-tab="watchlist">☆ 自選股</button>
+        <button data-tab="chat">◌ AI 問答</button>
+        <button data-tab="backtest">↻ 策略回測</button>
+        <button data-tab="settings">⚙ 設定</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="search">
+          <select id="market">
+            <option value="US">美股</option>
+            <option value="TW">台股</option>
+          </select>
+          <input id="symbolSearch" list="symbols" placeholder="搜尋 AAPL、NVDA、2330、2454" />
+          <button id="loadStock">分析</button>
+          <datalist id="symbols"></datalist>
+        </div>
+        <select id="provider">
+          <option>OPENAI</option>
+          <option>CLAUDE</option>
+          <option>GEMINI</option>
+          <option>DEEPSEEK</option>
+          <option>MIMO</option>
+        </select>
+        <button id="addWatch">加入自選</button>
+      </div>
+      <p id="watchFeedback" class="footer-note" style="margin-top:-4px;margin-bottom:12px"></p>
+
+      <section class="page-title">
+        <div>
+          <h1 id="title">Apple Inc. · AAPL</h1>
+          <p class="muted" id="subtitle">美股 · USD · America/New_York</p>
+        </div>
+        <span class="badge" id="dataTime"></span>
+      </section>
+      <div id="sourceNotice" class="source-notice"></div>
+
+      <section class="grid cols-4">
+        <div class="card"><h3>最新價格</h3><div class="metric" id="price"></div><p id="change"></p></div>
+        <div class="card"><h3>AI 共識分數</h3><div class="metric" id="consensus"></div><p class="muted" id="consensusText"></p></div>
+        <div class="card"><h3>上漲機率</h3><div class="metric" id="upProb"></div><p class="muted">mock-xgboost-v0.1 · 5 日</p></div>
+        <div class="card"><h3>風險等級</h3><div class="metric" id="risk"></div><p class="muted" id="riskText"></p></div>
+      </section>
+
+      <div class="tabs">
+        <button class="active" data-tab="dashboard">總覽</button>
+        <button data-tab="analysis">個股分析</button>
+        <button data-tab="compare">模型比較</button>
+        <button data-tab="watchlist">自選股</button>
+        <button data-tab="chat">AI 問答</button>
+        <button data-tab="backtest">回測</button>
+        <button data-tab="settings">設定</button>
+      </div>
+
+      <section id="dashboard" class="tab-panel active">
+        <div class="grid cols-2">
+          <div class="card chart">
+            <div>
+              <h2>價格走勢</h2>
+              <svg id="priceChart" viewBox="0 0 700 230" role="img" aria-label="價格走勢圖"></svg>
+              <div id="chartLegend" class="chart-legend"></div>
+              <div id="chartStats" class="chart-stats"></div>
+              <p id="chartInsight" class="chart-insight"></p>
+            </div>
+            <p class="muted">目前價格歷史會依資料來源顯示；若真實資料不可用，會自動回落模擬資料。</p>
+          </div>
+          <div class="card">
+            <h2>市場摘要</h2>
+            <table>
+              <tbody id="summaryTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="analysis" class="tab-panel">
+        <div class="grid cols-2">
+          <div class="card">
+            <h2>技術指標</h2>
+            <table><tbody id="techTable"></tbody></table>
+          </div>
+          <div class="card">
+            <h2>AI 分析 · <span id="providerLabel"></span></h2>
+            <div class="analysis-summary">
+              <div class="analysis-box">
+                <span class="analysis-caption">趨勢</span>
+                <strong id="trend"></strong>
+              </div>
+              <div class="analysis-box">
+                <span class="analysis-caption">AI 分數</span>
+                <strong id="aiScore"></strong>
+              </div>
+              <div class="analysis-box">
+                <span class="analysis-caption">5 日上漲機率</span>
+                <strong id="analysisProb"></strong>
+              </div>
+            </div>
+            <div class="analysis-panel">
+              <h3>偏多理由</h3>
+              <ul class="list" id="bullish"></ul>
+              <h3 style="margin-top:14px">主要風險</h3>
+              <ul class="list" id="bearish"></ul>
+            </div>
+            <div class="analysis-conclusion" id="conclusion"></div>
+            <div class="evidence-block">
+              <h3>檢索證據</h3>
+              <div id="analysisEvidence" class="muted">尚未載入檢索證據。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="compare" class="tab-panel">
+        <div class="grid cols-2">
+          <div class="card">
+            <h2>多模型比較</h2>
+            <div class="provider-grid" id="providerButtons"></div>
+            <div class="watch-actions" style="margin-top:8px">
+              <button data-fail="DEEPSEEK">模擬 DeepSeek 失敗</button>
+              <button data-fail="MIMO">模擬 MIMO 失敗</button>
+              <button data-clear-fail="1">清除失敗狀態</button>
+            </div>
+            <table style="margin-top:12px">
+              <thead><tr><th>模型</th><th>趨勢</th><th>分數</th><th>偏多機率</th><th>風險</th></tr></thead>
+              <tbody id="compareRows"></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h2>分歧警示</h2>
+            <p class="metric warn" id="divergence"></p>
+            <p class="muted" id="divergenceReason"></p>
+            <div class="bars" id="scoreBars" style="margin-top:18px"></div>
+            <div class="evidence-block">
+              <h3>共用檢索上下文</h3>
+              <div id="compareEvidence" class="muted">尚未載入共用證據。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="watchlist" class="tab-panel">
+        <div class="card">
+          <div class="row">
+            <h2>自選股</h2>
+            <div class="watch-actions"><button data-pick="US:AAPL">AAPL</button><button data-pick="US:NVDA">NVDA</button><button data-pick="TW:2330.TW">2330.TW</button></div>
+          </div>
+          <table>
+            <thead><tr><th>代碼</th><th>市場</th><th>價格</th><th>漲跌</th><th>AI 分數</th><th>風險</th><th>操作</th></tr></thead>
+            <tbody id="watchRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="chat" class="tab-panel">
+        <div class="card">
+          <h2>AI 問答</h2>
+          <div class="grid cols-3" style="margin-bottom:12px">
+            <button data-question="這檔股票未來 5 日風險在哪？">未來 5 日風險</button>
+            <button data-question="目前技術面偏多還是偏空？">技術面方向</button>
+            <button data-question="不同模型分歧的原因是什麼？">模型分歧原因</button>
+          </div>
+          <input id="chatInput" placeholder="輸入問題，例如：如果跌破 MA20 代表什麼？" />
+          <div class="card" style="margin-top:12px;background:#0c1827" id="chatAnswer"></div>
+          <div class="evidence-block">
+            <h3>AI 問答參考證據</h3>
+            <div id="chatEvidence" class="muted">尚未載入檢索證據。</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="backtest" class="tab-panel">
+        <div class="grid cols-2">
+          <div class="card">
+            <h2>策略回測</h2>
+            <div class="grid">
+              <input id="minScore" type="number" min="0" max="100" value="70" aria-label="最低 AI 分數" />
+              <input id="minProb" type="number" min="0" max="1" step="0.01" value="0.60" aria-label="最低上漲機率" />
+              <button id="runBacktest">執行回測</button>
+            </div>
+            <div id="backtestStatus" class="backtest-status"></div>
+          </div>
+          <div class="card">
+            <h2>回測結果</h2>
+            <div class="backtest-summary">
+              <div class="analysis-box">
+                <span class="analysis-caption">策略門檻</span>
+                <strong id="backtestRule"></strong>
+              </div>
+              <div class="analysis-box">
+                <span class="analysis-caption">資料來源</span>
+                <strong id="backtestSource"></strong>
+              </div>
+              <div class="analysis-box">
+                <span class="analysis-caption">結果狀態</span>
+                <strong id="backtestState"></strong>
+              </div>
+            </div>
+            <table><tbody id="backtestRows"></tbody></table>
+            <p class="footer-note" id="backtestNote">回測使用模擬歷史資料，不代表未來績效。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="settings" class="tab-panel">
+        <div class="grid cols-2">
+          <div class="card">
+            <h2>API 設定</h2>
+            <div class="grid">
+              <select id="dataMode" aria-label="資料模式">
+                <option value="mock">模擬資料</option>
+                <option value="real">真實 API</option>
+              </select>
+              <input id="apiBaseUrl" value="http://localhost:8080/api/v1" aria-label="API 基底網址" />
+              <button id="saveSettings">儲存設定</button>
+              <button id="testHealth">測試 /health</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>API 狀態</h2>
+            <table><tbody id="apiStatusRows"></tbody></table>
+            <div id="openAiSmokeHint" class="hint-box"></div>
+            <div id="liveChecklistHint" class="hint-box" style="margin-top:10px"></div>
+            <div class="watch-actions" style="margin-top:10px">
+              <button id="refreshLiveReadiness">刷新真實來源狀態</button>
+              <button id="verifyOpenAiLive">驗證 OpenAI 真實呼叫</button>
+              <button id="verifySourceLive">驗證來源抓取</button>
+            </div>
+            <div id="liveVerificationStatus" class="footer-note">尚未執行 live 驗收。</div>
+            <p class="footer-note">狀態列會顯示目前使用模擬資料、真實來源，或外部來源失敗後的回落資料。</p>
+          </div>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <div class="row">
+            <h2>帳號登入</h2>
+            <span id="authStatus" class="status-pill warn">訪客</span>
+          </div>
+          <div class="grid cols-3" style="margin-top:8px">
+            <input id="authEmail" type="email" placeholder="email@example.com" aria-label="帳號 Email" />
+            <input id="authPassword" type="password" placeholder="至少 6 碼密碼" aria-label="帳號密碼" />
+            <div class="watch-actions">
+              <button id="registerAuth">註冊</button>
+              <button id="loginAuth">登入</button>
+              <button id="logoutAuth">登出</button>
+              <button id="refreshAuth">刷新身分</button>
+            </div>
+          </div>
+          <div class="grid cols-3" style="margin-top:8px">
+            <input id="openAiApiKey" placeholder="OpenAI API Key（本機儲存）" aria-label="OpenAI API Key" />
+            <input id="geminiApiKey" placeholder="Gemini API Key（本機儲存）" aria-label="Gemini API Key" />
+            <input id="deepSeekApiKey" placeholder="DeepSeek API Key（本機儲存）" aria-label="DeepSeek API Key" />
+            <input id="mimoApiKey" placeholder="MIMO API Key（本機儲存）" aria-label="MIMO API Key" />
+          </div>
+          <div class="watch-actions" style="margin-top:8px">
+            <button id="saveApiKeys">儲存 AI Key</button>
+            <button id="clearOpenAiKey">清除 OpenAI Key</button>
+            <button id="clearGeminiKey">清除 Gemini Key</button>
+            <button id="clearDeepSeekKey">清除 DeepSeek Key</button>
+            <button id="clearMimoKey">清除 MIMO Key</button>
+          </div>
+            <p id="authMessage" class="footer-note">輸入 Key 後請按「儲存 AI Key」套用；未登入時儲存在本機，登入後儲存在後端帳號設定。留空儲存代表不覆蓋既有後端 key。</p>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <div class="row">
+            <h2>RAG 文件匯入</h2>
+            <button id="seedDocument">套用範例</button>
+          </div>
+          <div class="grid cols-3">
+            <select id="docMarket" aria-label="文件市場">
+              <option value="US">美股</option>
+              <option value="TW">台股</option>
+            </select>
+            <input id="docSymbol" placeholder="AAPL 或 2330" aria-label="文件股票代碼" />
+            <select id="docType" aria-label="文件類型">
+              <option value="NEWS">新聞</option>
+              <option value="COMPANY_ANNOUNCEMENT">公司公告</option>
+              <option value="EARNINGS_TRANSCRIPT">法說會逐字稿</option>
+              <option value="FINANCIAL_REPORT">財務報告</option>
+              <option value="RESEARCH_REPORT">研究報告</option>
+            </select>
+          </div>
+          <div class="grid" style="margin-top:8px">
+            <input id="docTitle" placeholder="標題" aria-label="文件標題" />
+            <input id="docSource" placeholder="來源，例如 Reuters / 公司公告" aria-label="文件來源" />
+            <input id="docPublishedAt" type="datetime-local" aria-label="文件發布時間" />
+            <textarea id="docContent" placeholder="貼上新聞、公告、法說會摘錄或報告內容"></textarea>
+            <div class="watch-actions">
+              <button id="importDocument">匯入文件</button>
+              <button id="useCurrentSymbol">帶入目前股票</button>
+            </div>
+            <div id="docImportStatus" class="footer-note">尚未匯入文件。</div>
+          </div>
+          <div class="grid" style="margin-top:14px">
+            <h3>來源匯入</h3>
+            <div class="grid cols-3">
+              <input id="sourceSymbol" placeholder="AAPL 或 2330" aria-label="來源股票代碼" />
+              <select id="sourceMarket" aria-label="來源市場">
+                <option value="US">美股</option>
+                <option value="TW">台股</option>
+              </select>
+              <input id="sourceQuarter" placeholder="2026Q2（法說會用）" aria-label="法說會季度" />
+            </div>
+              <div class="source-actions">
+                <button id="fetchNews">抓新聞</button>
+                <button id="fetchFinancials">抓財報</button>
+                <button id="fetchAnnouncements">抓公告</button>
+                <button id="fetchTranscript">抓法說會</button>
+                <button id="useCurrentSource">帶入目前股票</button>
+            </div>
+            <div id="sourceImportStatus" class="footer-note">尚未從來源抓取文件。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card risk" style="margin-top:12px">
+        <strong>風險聲明：</strong>
+        本頁為研究與分析輔助展示，資料可能來自模擬資料、真實資料來源或回落資料。模型預測不代表投資建議，不保證獲利，實際交易需自行評估風險。
+      </section>
+    </main>
+    <div class="mobile-dock" aria-label="快速操作">
+      <button class="active" data-tab="dashboard">總覽</button>
+      <button data-tab="analysis">分析</button>
+      <button data-tab="chat">問答</button>
+      <button data-tab="settings">設定</button>
+    </div>
+    <div id="interactionToast" class="interaction-toast" role="status" aria-live="polite"></div>
+    <div id="keyEntryModal" class="key-modal hidden" aria-hidden="true">
+      <div class="key-modal-card" role="dialog" aria-modal="true" aria-labelledby="keyEntryTitle">
+        <h3 id="keyEntryTitle">輸入 API Key</h3>
+        <p id="keyEntryHint">Key 只會儲存在本機或後端帳號設定，不會顯示在頁面上。</p>
+        <input id="keyEntryInput" type="password" autocomplete="off" placeholder="貼上 API Key / Token" aria-label="API Key 或 Token" />
+        <div class="watch-actions">
+          <button id="keyEntrySave">儲存</button>
+          <button id="keyEntryCancel">取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const providers = ["OPENAI", "CLAUDE", "GEMINI", "DEEPSEEK", "MIMO"];
+    const stocks = {
+      US: {
+        AAPL: stock("AAPL", "Apple Inc.", "US", "USD", 217.63, 2.14, [204, 207, 206, 211, 210, 214, 216, 215, 218]),
+        NVDA: stock("NVDA", "NVIDIA Corp.", "US", "USD", 164.29, 3.72, [144, 148, 151, 150, 156, 158, 162, 160, 164]),
+        TSLA: stock("TSLA", "Tesla Inc.", "US", "USD", 318.76, -1.86, [334, 329, 326, 322, 319, 321, 317, 320, 319])
+      },
+      TW: {
+        "2330.TW": stock("2330.TW", "台積電", "TW", "TWD", 1035, 1.47, [965, 972, 988, 996, 1008, 1015, 1022, 1018, 1035]),
+        "2454.TW": stock("2454.TW", "聯發科", "TW", "TWD", 1320, -0.75, [1365, 1350, 1342, 1330, 1328, 1316, 1322, 1310, 1320]),
+        "2317.TW": stock("2317.TW", "鴻海", "TW", "TWD", 184.5, 0.82, [176, 178, 181, 180, 182, 183, 185, 184, 184.5])
+      }
+    };
+    let state = {
+      market: "US",
+      symbol: "AAPL",
+      provider: "OPENAI",
+      watch: loadWatch(),
+      watchFeedback: "",
+      failedProviders: [],
+      settings: loadSettings(),
+      realStock: null,
+      realAi: null,
+      realEvidence: [],
+      realSearch: { query: "", results: [], timer: null, token: 0 }
+    };
+    let keyEntryResolver = null;
+    let renderPulseTimer = null;
+    let interactionToastTimer = null;
+    let autoSourceFetchToken = 0;
+
+    function stock(symbol, name, market, currency, price, changePct, prices) {
+      const base = symbol.charCodeAt(0) % 9;
+      return {
+        symbol, name, market, currency, price, changePct, prices,
+        timezone: market === "TW" ? "Asia/Taipei" : "America/New_York",
+        tech: { MA5: price * .99, MA20: price * .965, MA60: price * .928, RSI14: 58 + base, MACD: changePct > 0 ? "BULLISH" : "NEUTRAL", ATR14: price * .026 },
+        prediction: { upProbability: Math.max(.42, Math.min(.78, .58 + changePct / 40)), expectedReturn: changePct / 100 * .8, volatility: .028 + base / 1000, risk: Math.abs(changePct) > 2.5 ? "HIGH" : "MEDIUM" }
+      };
+    }
+
+    function generatedLocalStock(market, symbol) {
+      const normalized = normalizeSymbol(market, symbol);
+      const seed = normalized.split("").reduce((sum, char, index) => sum + char.charCodeAt(0) * (index + 1), 0);
+      const currency = market === "TW" ? "TWD" : "USD";
+      const basePrice = market === "TW"
+        ? 45 + (seed % 1600) / 2
+        : 30 + (seed % 4200) / 20;
+      const price = Number(basePrice.toFixed(market === "TW" ? 2 : 2));
+      const changePct = Number((((seed % 1100) / 100) - 5.5).toFixed(2));
+      const step = Math.max(price * (market === "TW" ? 0.006 : 0.012), market === "TW" ? 1.5 : 0.8);
+      const prices = Array.from({ length: 9 }, (_, index) => {
+        const drift = (index - 4) * step;
+        const noise = (((seed + index * 17) % 9) - 4) * step * 0.35;
+        const point = price + drift + noise;
+        return Number(Math.max(point, market === "TW" ? 5 : 3).toFixed(2));
+      });
+      prices[prices.length - 1] = price;
+      const generated = stock(
+        normalized,
+        market === "TW" ? `${normalized.replace(".TW", "")} 模擬股票` : `${normalized} 模擬公司`,
+        market,
+        currency,
+        price,
+        changePct,
+        prices
+      );
+      generated.source = "mock-generated";
+      return generated;
+    }
+
+    function ensureLocalStock(market, symbol) {
+      const normalized = normalizeSymbol(market, symbol);
+      if (!stocks[market][normalized]) {
+        stocks[market][normalized] = generatedLocalStock(market, normalized);
+      }
+      return stocks[market][normalized];
+    }
+
+    function normalizeSymbol(market, value) {
+      const raw = (value || "").trim().toUpperCase();
+      if (!raw) return market === "TW" ? "2330.TW" : "AAPL";
+      return market === "TW" && /^[0-9]{4,6}(\.TW)?$/.test(raw) ? raw.replace(".TW", "") + ".TW" : raw;
+    }
+
+    function resolveSearchTarget(value) {
+      const raw = (value || "").trim().toUpperCase();
+      const currentMarket = state.market;
+      const otherMarket = currentMarket === "TW" ? "US" : "TW";
+      const currentSymbol = normalizeSymbol(currentMarket, raw);
+      const otherSymbol = normalizeSymbol(otherMarket, raw);
+      if (!raw) {
+        return { market: currentMarket, symbol: currentSymbol, found: true, switchedMarket: false };
+      }
+      if (stocks[currentMarket][currentSymbol]) {
+        return { market: currentMarket, symbol: currentSymbol, found: true, switchedMarket: false };
+      }
+      if (stocks[otherMarket][otherSymbol]) {
+        return { market: otherMarket, symbol: otherSymbol, found: true, switchedMarket: true };
+      }
+      const inferredMarket = /^[0-9]{4,6}(\.TW)?$/.test(raw) ? "TW" : "US";
+      return {
+        market: inferredMarket,
+        symbol: normalizeSymbol(inferredMarket, raw),
+        found: false,
+        switchedMarket: inferredMarket !== currentMarket
+      };
+    }
+
+    function resolveCachedRealSearchTarget(value) {
+      const raw = (value || "").trim().toUpperCase();
+      if (!raw) return null;
+      const currentMarketSymbol = normalizeSymbol(state.market, raw);
+      const results = state.realSearch.results || [];
+      const exact = results.find(item =>
+        item.symbol === currentMarketSymbol ||
+        item.symbol === raw ||
+        item.symbol.replace(".TW", "") === raw.replace(".TW", "")
+      );
+      const best = exact || results[0];
+      if (!best) return null;
+      return {
+        market: best.market,
+        symbol: best.symbol,
+        found: true,
+        switchedMarket: best.market !== state.market,
+        source: best.source || "real-search"
+      };
+    }
+
+    function selectedStock() {
+      if (state.settings.mode === "real" && state.realStock && state.realStock.symbol === state.symbol && state.realStock.market === state.market) {
+        return state.realStock;
+      }
+      if (state.settings.mode !== "real") {
+        return ensureLocalStock(state.market, state.symbol);
+      }
+      return stocks[state.market][state.symbol] || Object.values(stocks[state.market])[0];
+    }
+
+    function loadWatch() {
+      try {
+        return JSON.parse(localStorage.getItem("stockAiWatchlist")) || ["US:AAPL", "TW:2330.TW"];
+      } catch {
+        return ["US:AAPL", "TW:2330.TW"];
+      }
+    }
+
+    function saveWatch() {
+      localStorage.setItem("stockAiWatchlist", JSON.stringify(state.watch));
+    }
+
+    function setWatchFeedback(message) {
+      state.watchFeedback = message;
+      const node = document.getElementById("watchFeedback");
+      if (node) node.textContent = message;
+    }
+
+    function loadSettings() {
+      const params = new URLSearchParams(location.search);
+      try {
+        const settings = { ...defaultSettings(), ...(JSON.parse(localStorage.getItem("stockAiSettings")) || {}) };
+        if (params.get("mode")) settings.mode = params.get("mode");
+        if (params.get("apiBaseUrl")) settings.apiBaseUrl = params.get("apiBaseUrl").replace(/\/+$/, "");
+        return settings;
+      } catch {
+        const settings = defaultSettings();
+        if (params.get("mode")) settings.mode = params.get("mode");
+        if (params.get("apiBaseUrl")) settings.apiBaseUrl = params.get("apiBaseUrl").replace(/\/+$/, "");
+        return settings;
+      }
+    }
+
+    function defaultSettings() {
+      return {
+        mode: "real",
+        apiBaseUrl: "http://localhost:8080/api/v1",
+        health: "未測試",
+        lastDocumentImport: "尚未匯入文件",
+        lastSourceImport: "尚未從來源抓取文件",
+        authToken: "",
+        authUserEmail: "",
+        authExpiresAt: 0,
+        authProvider: "",
+        preferredProvider: "",
+        hasStoredOpenAiApiKey: false,
+        hasStoredGeminiApiKey: false,
+        hasStoredDeepSeekApiKey: false,
+        hasStoredMimoApiKey: false,
+        accountSettingsUpdatedAt: "",
+        openAiApiKey: "",
+        geminiApiKey: "",
+        deepSeekApiKey: "",
+        mimoApiKey: "",
+        alphaVantageApiKey: "",
+        finMindApiToken: "",
+        fmpApiKey: "",
+        lastLiveVerification: "尚未執行 live 驗收。"
+      };
+    }
+
+    function saveSettings() {
+      localStorage.setItem("stockAiSettings", JSON.stringify(state.settings));
+    }
+
+    function authHeaders(baseHeaders = {}) {
+      const headers = { ...baseHeaders };
+      if (state.settings.authToken) {
+        headers.Authorization = `Bearer ${state.settings.authToken}`;
+      }
+      if (state.settings.openAiApiKey) {
+        headers["X-OpenAI-Api-Key"] = state.settings.openAiApiKey;
+      }
+      if (state.settings.geminiApiKey) {
+        headers["X-Gemini-Api-Key"] = state.settings.geminiApiKey;
+      }
+      if (state.settings.deepSeekApiKey) {
+        headers["X-DeepSeek-Api-Key"] = state.settings.deepSeekApiKey;
+      }
+      if (state.settings.mimoApiKey) {
+        headers["X-Mimo-Api-Key"] = state.settings.mimoApiKey;
+      }
+      if (state.settings.alphaVantageApiKey) {
+        headers["X-AlphaVantage-Api-Key"] = state.settings.alphaVantageApiKey;
+      }
+      if (state.settings.finMindApiToken) {
+        headers["X-FinMind-Api-Token"] = state.settings.finMindApiToken;
+      }
+      if (state.settings.fmpApiKey) {
+        headers["X-FMP-Api-Key"] = state.settings.fmpApiKey;
+      }
+      return headers;
+    }
+
+    function explainFetchFailure(error, path) {
+      const message = error?.message || String(error);
+      if (message === "Failed to fetch" || error instanceof TypeError) {
+        return `無法連到後端 API（${path}）：請確認 backend 已啟動、API 網址正確，且後端已重啟套用 CORS PUT 設定。`;
+      }
+      return message;
+    }
+
+    async function apiGet(path) {
+      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
+        throw new Error(explainFetchFailure(error, path));
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
+      return unwrap(await response.json());
+    }
+
+    async function apiGetOptional(path) {
+      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
+        throw new Error(explainFetchFailure(error, path));
+      });
+      if (!response.ok) return null;
+      return unwrap(await response.json());
+    }
+
+    async function apiPost(path, body) {
+      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, {
+        method: "POST",
+        headers: authHeaders({ "content-type": "application/json", Accept: "application/json" }),
+        body: JSON.stringify(body)
+      }).catch(error => {
+        throw new Error(explainFetchFailure(error, path));
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
+      return unwrap(await response.json());
+    }
+
+    async function apiPut(path, body) {
+      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, {
+        method: "PUT",
+        headers: authHeaders({ "content-type": "application/json", Accept: "application/json" }),
+        body: JSON.stringify(body)
+      }).catch(error => {
+        throw new Error(explainFetchFailure(error, path));
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
+      return unwrap(await response.json());
+    }
+
+    async function refreshHealthStatus(baseUrlOverride) {
+      const baseUrl = (baseUrlOverride || state.settings.apiBaseUrl || "").replace(/\/+$/, "");
+      const response = await fetch(`${baseUrl}/health`, { headers: authHeaders({ Accept: "application/json" }) });
+      const body = await response.json().catch(() => ({}));
+      state.settings.health = response.ok ? `OK ${response.status}` : `HTTP ${response.status}`;
+      state.settings.providerStatus = body.providers || body.data?.providers || null;
+      state.settings.apiBaseUrl = baseUrl;
+      saveSettings();
+      return state.settings.providerStatus;
+    }
+
+    function setAuthMessage(message, failed) {
+      const node = document.getElementById("authMessage");
+      node.textContent = message;
+      node.className = failed ? "footer-note failed" : "footer-note up";
+    }
+
+    function persistAuth(result) {
+      state.settings.authToken = result?.token || "";
+      state.settings.authUserEmail = result?.user?.email || "";
+      state.settings.authExpiresAt = result?.expiresAt || 0;
+      state.settings.authProvider = result?.user?.authProvider || "";
+      if (!result) {
+        state.settings.preferredProvider = "";
+        state.settings.hasStoredOpenAiApiKey = false;
+        state.settings.hasStoredGeminiApiKey = false;
+        state.settings.hasStoredDeepSeekApiKey = false;
+        state.settings.hasStoredMimoApiKey = false;
+        state.settings.accountSettingsUpdatedAt = "";
+      }
+      saveSettings();
+    }
+
+    function setProvider(provider) {
+      state.provider = provider;
+      const providerSelect = document.getElementById("provider");
+      if (providerSelect) {
+        providerSelect.value = provider;
+      }
+    }
+
+    function applyProviderFromAuth() {
+      const provider = state.settings.authToken
+        ? (state.settings.preferredProvider || (state.settings.mimoApiKey ? "MIMO" : state.settings.deepSeekApiKey ? "DEEPSEEK" : state.settings.geminiApiKey ? "GEMINI" : state.settings.openAiApiKey ? "OPENAI" : state.provider || "OPENAI"))
+        : state.settings.mimoApiKey ? "MIMO" : state.settings.deepSeekApiKey ? "DEEPSEEK" : state.settings.geminiApiKey ? "GEMINI" : state.settings.openAiApiKey ? "OPENAI" : state.provider;
+      setProvider(provider);
+    }
+
+    function readStoredProviderKey(data, kind, fallback, justSubmitted) {
+      if (justSubmitted) return true;
+      const fields = kind === "OPENAI"
+        ? ["hasOpenAiApiKey", "openAiApiKey"]
+        : kind === "GEMINI"
+          ? ["hasGeminiApiKey", "geminiApiKey"]
+          : kind === "DEEPSEEK"
+            ? ["hasDeepSeekApiKey", "deepSeekApiKey"]
+            : ["hasMimoApiKey", "mimoApiKey"];
+      for (const field of fields) {
+        if (Object.prototype.hasOwnProperty.call(data || {}, field)) {
+          const value = data[field];
+          return value === true || value === "true" || (typeof value === "string" && value.trim().length > 0);
+        }
+      }
+      return fallback;
+    }
+
+    async function loadAccountSettings() {
+      if (!state.settings.authToken) return;
+      const data = await apiGet("/account/settings");
+      state.settings.preferredProvider = data.preferredProvider || "";
+      state.settings.hasStoredOpenAiApiKey = readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, false);
+      state.settings.hasStoredGeminiApiKey = readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, false);
+      state.settings.hasStoredDeepSeekApiKey = readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, false);
+      state.settings.hasStoredMimoApiKey = readStoredProviderKey(data, "MIMO", state.settings.hasStoredMimoApiKey, false);
+      state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
+      state.settings.openAiApiKey = "";
+      state.settings.geminiApiKey = "";
+      state.settings.deepSeekApiKey = "";
+      state.settings.mimoApiKey = "";
+      saveSettings();
+      applyProviderFromAuth();
+    }
+
+    async function saveAccountSettings() {
+      if (!state.settings.authToken) return false;
+      const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
+      const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
+      const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
+      const mimoApiKey = document.getElementById("mimoApiKey").value.trim();
+      const preferredProvider = mimoApiKey ? "MIMO" : deepSeekApiKey ? "DEEPSEEK" : geminiApiKey ? "GEMINI" : openAiApiKey ? "OPENAI" : state.provider;
+      const payload = {
+        preferredProvider
+      };
+      if (openAiApiKey) payload.openAiApiKey = openAiApiKey;
+      if (geminiApiKey) payload.geminiApiKey = geminiApiKey;
+      if (deepSeekApiKey) payload.deepSeekApiKey = deepSeekApiKey;
+      if (mimoApiKey) payload.mimoApiKey = mimoApiKey;
+      const data = await apiPut("/account/settings", payload);
+      state.settings.preferredProvider = data.preferredProvider || "";
+      state.settings.hasStoredOpenAiApiKey = readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, !!openAiApiKey);
+      state.settings.hasStoredGeminiApiKey = readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, !!geminiApiKey);
+      state.settings.hasStoredDeepSeekApiKey = readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, !!deepSeekApiKey);
+      state.settings.hasStoredMimoApiKey = readStoredProviderKey(data, "MIMO", state.settings.hasStoredMimoApiKey, !!mimoApiKey);
+      state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
+      state.settings.openAiApiKey = "";
+      state.settings.geminiApiKey = "";
+      state.settings.deepSeekApiKey = "";
+      state.settings.mimoApiKey = "";
+      setProvider(data.preferredProvider || preferredProvider);
+      saveSettings();
+      applyProviderFromAuth();
+      return { openAiApiKeySaved: !!openAiApiKey, geminiApiKeySaved: !!geminiApiKey, deepSeekApiKeySaved: !!deepSeekApiKey, mimoApiKeySaved: !!mimoApiKey, preferredProvider };
+    }
+
+    async function clearProviderKey(kind) {
+      const config = {
+        OPENAI: { label: "OpenAI", buttonId: "clearOpenAiKey", inputId: "openAiApiKey", localKey: "openAiApiKey", storedKey: "hasStoredOpenAiApiKey" },
+        GEMINI: { label: "Gemini", buttonId: "clearGeminiKey", inputId: "geminiApiKey", localKey: "geminiApiKey", storedKey: "hasStoredGeminiApiKey" },
+        DEEPSEEK: { label: "DeepSeek", buttonId: "clearDeepSeekKey", inputId: "deepSeekApiKey", localKey: "deepSeekApiKey", storedKey: "hasStoredDeepSeekApiKey" },
+        MIMO: { label: "MIMO", buttonId: "clearMimoKey", inputId: "mimoApiKey", localKey: "mimoApiKey", storedKey: "hasStoredMimoApiKey" }
+      }[kind];
+      if (!config) return;
+      const button = document.getElementById(config.buttonId);
+      const input = document.getElementById(config.inputId);
+      if (!button || !input) return;
+      setBusy(button, true, "清除中...");
+      try {
+        const hasStoredBackendKey = !!state.settings[config.storedKey];
+        const hasLocalKey = !!state.settings[config.localKey];
+        if (state.settings.authToken && hasStoredBackendKey) {
+          const payload = {
+            preferredProvider: state.provider,
+            [config.localKey]: ""
+          };
+          const data = await apiPut("/account/settings", payload);
+          state.settings.preferredProvider = data.preferredProvider || "";
+          state.settings.hasStoredOpenAiApiKey = kind === "OPENAI" ? false : readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, false);
+          state.settings.hasStoredGeminiApiKey = kind === "GEMINI" ? false : readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, false);
+          state.settings.hasStoredDeepSeekApiKey = kind === "DEEPSEEK" ? false : readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, false);
+          state.settings.hasStoredMimoApiKey = kind === "MIMO" ? false : readStoredProviderKey(data, "MIMO", state.settings.hasStoredMimoApiKey, false);
+          state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
+          input.value = "";
+          state.settings[config.localKey] = "";
+          saveSettings();
+          setAuthMessage(`已清除 ${config.label} 後端 key。`, false);
+        } else {
+          input.value = "";
+          state.settings[config.localKey] = "";
+          saveSettings();
+          applyProviderFromAuth();
+          setAuthMessage(`已清除 ${config.label}${hasLocalKey ? " 本機" : ""} key。`, false);
+        }
+      } catch (error) {
+        setAuthMessage(`清除 ${config.label} key 失敗：${error.message}`, true);
+      } finally {
+        setBusy(button, false);
+        renderSettings();
+      }
+    }
+
+    function persistLocalApiKeys(openAiApiKey, geminiApiKey, deepSeekApiKey, mimoApiKey) {
+      if (openAiApiKey) state.settings.openAiApiKey = openAiApiKey;
+      if (geminiApiKey) state.settings.geminiApiKey = geminiApiKey;
+      if (deepSeekApiKey) state.settings.deepSeekApiKey = deepSeekApiKey;
+      if (mimoApiKey) state.settings.mimoApiKey = mimoApiKey;
+      if (mimoApiKey) {
+        setProvider("MIMO");
+      } else if (deepSeekApiKey) {
+        setProvider("DEEPSEEK");
+      } else if (geminiApiKey) {
+        setProvider("GEMINI");
+      } else if (openAiApiKey) {
+        setProvider("OPENAI");
+      }
+      state.settings.preferredProvider = state.provider;
+      saveSettings();
+      return !!(openAiApiKey || geminiApiKey || deepSeekApiKey || mimoApiKey);
+    }
+
+    async function saveUiSettings() {
+      state.settings.mode = document.getElementById("dataMode").value;
+      state.settings.apiBaseUrl = document.getElementById("apiBaseUrl").value.replace(/\/+$/, "");
+      saveSettings();
+      if (state.settings.authToken) {
+        const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
+        const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
+        const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
+        const mimoApiKey = document.getElementById("mimoApiKey").value.trim();
+        try {
+          const saved = await saveAccountSettings();
+          if (saved?.mimoApiKeySaved) {
+            setAuthMessage("MIMO Key 已儲存到後端，並切換偏好 AI 為 MIMO。", false);
+          } else if (saved?.deepSeekApiKeySaved) {
+            setAuthMessage("DeepSeek Key 已儲存到後端，並切換偏好 AI 為 DEEPSEEK。", false);
+          } else if (saved?.geminiApiKeySaved) {
+            setAuthMessage("Gemini Key 已儲存到後端，並切換偏好 AI 為 GEMINI。", false);
+          } else if (saved?.openAiApiKeySaved) {
+            setAuthMessage("OpenAI Key 已儲存到後端，並切換偏好 AI 為 OPENAI。", false);
+          } else {
+            setAuthMessage(`帳號設定已儲存到後端，目前偏好 AI：${state.provider}。`, false);
+          }
+        } catch (error) {
+          if (persistLocalApiKeys(openAiApiKey, geminiApiKey, deepSeekApiKey, mimoApiKey)) {
+            setAuthMessage(`後端帳號設定暫時無法儲存，已先改用本機 Key header（${state.provider}）。原因：${error.message}`, false);
+          } else {
+            setAuthMessage(`帳號設定儲存失敗：${error.message}`, true);
+          }
+        }
+      } else {
+        const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
+        const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
+        const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
+        const mimoApiKey = document.getElementById("mimoApiKey").value.trim();
+        state.settings.openAiApiKey = openAiApiKey;
+        state.settings.geminiApiKey = geminiApiKey;
+        state.settings.deepSeekApiKey = deepSeekApiKey;
+        state.settings.mimoApiKey = mimoApiKey;
+        if (mimoApiKey) {
+          setProvider("MIMO");
+        } else if (deepSeekApiKey) {
+          setProvider("DEEPSEEK");
+        } else if (geminiApiKey) {
+          setProvider("GEMINI");
+        } else if (openAiApiKey) {
+          setProvider("OPENAI");
+        }
+        applyProviderFromAuth();
+        saveSettings();
+        if (mimoApiKey) {
+          setAuthMessage("MIMO Key 已儲存在本機，並切換 AI 模型為 MIMO。", false);
+        } else if (deepSeekApiKey) {
+          setAuthMessage("DeepSeek Key 已儲存在本機，並切換 AI 模型為 DEEPSEEK。", false);
+        } else if (geminiApiKey) {
+          setAuthMessage("Gemini Key 已儲存在本機，並切換 AI 模型為 GEMINI。", false);
+        } else if (openAiApiKey) {
+          setAuthMessage("OpenAI Key 已儲存在本機，並切換 AI 模型為 OPENAI。", false);
+        } else {
+          setAuthMessage(`設定已儲存，目前 AI 模型：${state.provider}。`, false);
+        }
+      }
+      render();
+    }
+
+    function previewApiKeyInput() {
+      const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
+      const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
+      const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
+      const mimoApiKey = document.getElementById("mimoApiKey").value.trim();
+      if (mimoApiKey) {
+        setProvider("MIMO");
+        setAuthMessage("已偵測到 MIMO Key，尚未儲存。請按「儲存 AI Key」套用。", false);
+      } else if (deepSeekApiKey) {
+        setProvider("DEEPSEEK");
+        setAuthMessage("已偵測到 DeepSeek Key，尚未儲存。請按「儲存 AI Key」套用。", false);
+      } else if (geminiApiKey) {
+        setProvider("GEMINI");
+        setAuthMessage("已偵測到 Gemini Key，尚未儲存。請按「儲存 AI Key」套用。", false);
+      } else if (openAiApiKey) {
+        setProvider("OPENAI");
+        setAuthMessage("已偵測到 OpenAI Key，尚未儲存。請按「儲存 AI Key」套用。", false);
+      } else {
+        setAuthMessage("Key 欄位已清空；若要移除已儲存 Key，請按對應的清除按鈕。", false);
+      }
+    }
+
+    async function syncWatchlistFromApi() {
+      const data = await apiGet("/watchlist");
+      state.watch = data.map(item => `${item.market}:${item.symbol}`);
+      renderWatch();
+    }
+
+    async function submitAuth(path) {
+      const email = document.getElementById("authEmail").value.trim();
+      const password = document.getElementById("authPassword").value;
+      if (!email || !password) {
+        setAuthMessage("請輸入 email 與密碼。", true);
+        return;
+      }
+      const actionButton = path.includes("register") ? document.getElementById("registerAuth") : document.getElementById("loginAuth");
+      setBusy(actionButton, true, path.includes("register") ? "註冊中..." : "登入中...");
+      try {
+        const result = await apiPost(path, { email, password });
+        persistAuth(result);
+        await loadAccountSettings();
+        await syncWatchlistFromApi();
+        setAuthMessage(`${path.includes("register") ? "註冊" : "登入"}成功：${result.user.email}`, false);
+        renderSettings();
+      } catch (error) {
+        setAuthMessage(`${path.includes("register") ? "註冊" : "登入"}失敗：${error.message}`, true);
+      } finally {
+        setBusy(actionButton, false);
+      }
+    }
+
+    async function refreshAuthMe() {
+      const button = document.getElementById("refreshAuth");
+      if (!state.settings.authToken) {
+        setAuthMessage("目前沒有登入 token。", true);
+        renderSettings();
+        return;
+      }
+      setBusy(button, true, "刷新中...");
+      try {
+        const user = await apiGet("/auth/me");
+        state.settings.authUserEmail = user.email;
+        state.settings.authProvider = user.authProvider || "";
+        saveSettings();
+        await loadAccountSettings();
+        await syncWatchlistFromApi();
+        setAuthMessage(`目前登入帳號：${user.email}`, false);
+      } catch (error) {
+        persistAuth(null);
+        setAuthMessage(`登入狀態失效：${error.message}`, true);
+      } finally {
+        setBusy(button, false);
+        renderSettings();
+      }
+    }
+
+    function logoutAuth() {
+      persistAuth(null);
+      state.watch = loadWatch();
+      state.settings.openAiApiKey = "";
+      state.settings.geminiApiKey = "";
+      state.settings.deepSeekApiKey = "";
+      state.settings.mimoApiKey = "";
+      state.provider = "OPENAI";
+      setAuthMessage("已登出，改回訪客自選股。", false);
+      renderSettings();
+      renderWatch();
+    }
+
+    async function importDocument() {
+      const button = document.getElementById("importDocument");
+      const market = document.getElementById("docMarket").value;
+      const symbol = normalizeSymbol(market, document.getElementById("docSymbol").value);
+      const title = document.getElementById("docTitle").value.trim();
+      const source = document.getElementById("docSource").value.trim();
+      const publishedAtRaw = document.getElementById("docPublishedAt").value;
+      const content = document.getElementById("docContent").value.trim();
+      if (!title || !source || !publishedAtRaw || !content) {
+        return setDocumentImportStatus("請填完整標題、來源、時間與內容。", true);
+      }
+      setBusy(button, true, "匯入中...");
+      try {
+        const data = await apiPost("/documents/import", {
+          market,
+          symbol,
+          docType: document.getElementById("docType").value,
+          title,
+          source,
+          publishedAt: new Date(publishedAtRaw).toISOString(),
+          content
+        });
+        const message = `匯入成功：${data.symbol} / ${data.docType} / ${data.chunksImported} chunks`;
+        state.settings.lastDocumentImport = message;
+        state.settings.lastDataLoad = message;
+        saveSettings();
+        setDocumentImportStatus(message, false);
+        if (state.settings.mode === "real" && state.symbol === data.symbol && state.market === market) {
+          await refreshRealAnalysis();
+        }
+      } catch (error) {
+        const message = `文件匯入失敗：${error.message}`;
+        state.settings.lastDocumentImport = message;
+        saveSettings();
+        setDocumentImportStatus(message, true);
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    function latestCompletedQuarter(date = new Date()) {
+      const currentQuarter = Math.floor(date.getMonth() / 3) + 1;
+      if (currentQuarter === 1) {
+        return `${date.getFullYear() - 1}Q4`;
+      }
+      return `${date.getFullYear()}Q${currentQuarter - 1}`;
+    }
+
+    function sourceKindLabel(kind) {
+      return {
+        news: "新聞",
+        financials: "財報",
+        announcements: "公告",
+        transcript: "法說會"
+      }[kind] || kind;
+    }
+
+    function sourceFetchConfig(kind, market, symbol, quarter, limit = 5) {
+      if (kind === "news") {
+        return { label: "新聞", path: "/documents/source/news/fetch", payload: { market, symbol, limit } };
+      }
+      if (kind === "financials") {
+        return { label: "財報", path: "/documents/source/financials/fetch", payload: { market, symbol, limit } };
+      }
+      if (kind === "announcements") {
+        return { label: "公告", path: "/documents/source/announcements/fetch", payload: { market, symbol, limit } };
+      }
+      return { label: "法說會", path: "/documents/source/transcripts/fetch", payload: { market, symbol, quarter } };
+    }
+
+    async function fetchSourceDocumentKind(kind, { market, symbol, quarter, limit = 5 }) {
+      const normalizedSymbol = normalizeSymbol(market, symbol);
+      const normalizedQuarter = (quarter || latestCompletedQuarter()).trim().toUpperCase();
+      if (kind === "transcript" && !normalizedQuarter) {
+        throw new Error("法說會匯入需要季度，例如 2026Q2。");
+      }
+      const config = sourceFetchConfig(kind, market, normalizedSymbol, normalizedQuarter, limit);
+      const data = await apiPost(config.path, config.payload);
+      return {
+        kind,
+        label: config.label,
+        data,
+        message: `${config.label}抓取完成：${data.symbol} / ${data.documentCount} docs / ${data.chunkCount} chunks`
+      };
+    }
+
+    function syncSourceFetchForm(market, symbol, quarter = latestCompletedQuarter()) {
+      document.getElementById("sourceMarket").value = market;
+      document.getElementById("sourceSymbol").value = symbol;
+      document.getElementById("sourceQuarter").value = quarter;
+    }
+
+    async function fetchSourceDocuments(kind) {
+      const button = document.getElementById(
+        kind === "news" ? "fetchNews" :
+        kind === "financials" ? "fetchFinancials" :
+        kind === "announcements" ? "fetchAnnouncements" :
+        "fetchTranscript"
+      );
+      setBusy(button, true, "抓取中...");
+      try {
+        const sourceMarket = document.getElementById("sourceMarket").value;
+        const sourceSymbol = document.getElementById("sourceSymbol").value;
+        const sourceQuarter = document.getElementById("sourceQuarter").value.trim().toUpperCase() || latestCompletedQuarter();
+        const result = await fetchSourceDocumentKind(kind, {
+          market: sourceMarket,
+          symbol: sourceSymbol,
+          quarter: sourceQuarter,
+          limit: 5
+        });
+        const message = result.message;
+        state.settings.lastSourceImport = message;
+        state.settings.lastDataLoad = message;
+        saveSettings();
+        setSourceImportStatus(message, false);
+        if (state.settings.mode === "real" && state.market === sourceMarket && state.symbol === result.data.symbol) {
+          await refreshRealAnalysis();
+        }
+      } catch (error) {
+        const message = `來源抓取失敗：${error.message}`;
+        state.settings.lastSourceImport = message;
+        saveSettings();
+        setSourceImportStatus(message, true);
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function autoFetchLatestSources(market, symbol) {
+      const token = ++autoSourceFetchToken;
+      const quarter = latestCompletedQuarter();
+      const normalizedSymbol = normalizeSymbol(market, symbol);
+      syncSourceFetchForm(market, normalizedSymbol, quarter);
+      setSourceImportStatus(`已載入 ${normalizedSymbol}，正在自動抓取最新新聞、財報、公告與法說會...`, false);
+      const kinds = ["news", "financials", "announcements", "transcript"];
+      const results = [];
+      let hasFailure = false;
+      for (const kind of kinds) {
+        try {
+          const result = await fetchSourceDocumentKind(kind, { market, symbol: normalizedSymbol, quarter, limit: 5 });
+          if (token !== autoSourceFetchToken) return;
+          results.push(`${result.label}=${result.data.documentCount} docs`);
+        } catch (error) {
+          if (token !== autoSourceFetchToken) return;
+          hasFailure = true;
+          results.push(`${sourceKindLabel(kind)}=失敗(${error.message})`);
+        }
+        setSourceImportStatus(`自動來源抓取中：${normalizedSymbol} / ${results.join(" / ")}`, hasFailure);
+      }
+      const message = `自動來源抓取完成：${normalizedSymbol} / ${quarter} / ${results.join(" / ")}`;
+      state.settings.lastSourceImport = message;
+      state.settings.lastDataLoad = message;
+      saveSettings();
+      setSourceImportStatus(message, hasFailure);
+      if (state.settings.mode === "real" && state.market === market && state.symbol === normalizedSymbol) {
+        refreshRealAnalysis().catch(() => {});
+      }
+    }
+
+    function setLiveVerificationStatus(message, failed) {
+      const node = document.getElementById("liveVerificationStatus");
+      node.textContent = message;
+      node.className = failed ? "footer-note failed" : "footer-note up";
+      state.settings.lastLiveVerification = message;
+      saveSettings();
+    }
+
+    async function verifyOpenAiLiveFlow() {
+      const button = document.getElementById("verifyOpenAiLive");
+      setBusy(button, true, "驗證中...");
+      try {
+        const providers = await refreshHealthStatus();
+        if (!providers?.openAiConfigured && !state.settings.openAiApiKey && !state.settings.hasStoredOpenAiApiKey) {
+          setLiveVerificationStatus("OpenAI live 驗收略過：目前沒有可用的 OpenAI key。", true);
+          return;
+        }
+        const symbol = state.market === "TW" ? "2330.TW" : "AAPL";
+        const market = state.market;
+        const [analysis, chat] = await Promise.all([
+          apiPost("/ai/analysis", { market, symbol, provider: "OPENAI", horizonDays: 5 }),
+          apiPost("/ai/chat", { market, symbol, provider: "OPENAI", message: "Live verification. Reply with one short sentence." })
+        ]);
+        if (isMockAiSource(analysis.source) || isMockAiSource(chat.source)) {
+          setLiveVerificationStatus(`OpenAI live 驗收失敗：analysis=${analysis.source || "unknown"} / chat=${chat.source || "unknown"}`, true);
+          return;
+        }
+        setLiveVerificationStatus(`OpenAI live 驗收成功：analysis=${analysis.source} / chat=${chat.source}`, false);
+      } catch (error) {
+        setLiveVerificationStatus(`OpenAI live 驗收失敗：${error.message}`, true);
+      } finally {
+        setBusy(button, false);
+        renderSettings();
+      }
+    }
+
+    async function verifySourceFetchLiveFlow() {
+      const button = document.getElementById("verifySourceLive");
+      setBusy(button, true, "驗證中...");
+      try {
+        const providers = await refreshHealthStatus();
+        const results = [];
+        if (providers?.alphaVantageNewsConfigured || providers?.fmpNewsConfigured || providers?.yahooFinanceNewsConfigured) {
+          const news = await apiPost("/documents/source/news/fetch", { market: "US", symbol: "AAPL", limit: 2 });
+          results.push(`美股新聞=${news.documentCount} 文件`);
+        } else {
+          results.push("美股新聞=略過");
+        }
+        if (providers?.finMindNewsConfigured || providers?.finMindConfigured || providers?.yahooFinanceNewsConfigured) {
+          const twNews = await apiPost("/documents/source/news/fetch", { market: "TW", symbol: "2330", limit: 2 });
+          results.push(`台股新聞=${twNews.documentCount} 文件`);
+        } else {
+          results.push("台股新聞=略過");
+        }
+        if (providers?.finMindFinancialsConfigured || providers?.finMindConfigured || providers?.yahooFinanceFinancialsConfigured) {
+          const financials = await apiPost("/documents/source/financials/fetch", { market: "TW", symbol: "2330", limit: 2 });
+          results.push(`財報=${financials.documentCount} 文件`);
+        } else {
+          results.push("財報=略過");
+        }
+        if (providers?.alphaVantageTranscriptConfigured || providers?.fmpTranscriptConfigured || providers?.yahooFinanceNewsConfigured) {
+          const transcript = await apiPost("/documents/source/transcripts/fetch", { market: "US", symbol: "AAPL", quarter: latestCompletedQuarter() });
+          results.push(`法說會=${transcript.documentCount} 文件`);
+        } else {
+          results.push("法說會=略過");
+        }
+        if (providers?.twseDisclosureConfigured || providers?.yahooFinanceNewsConfigured) {
+          const announcement = await apiPost("/documents/source/announcements/fetch", { market: "TW", symbol: "2330", limit: 2 });
+          results.push(`公告=${announcement.documentCount} 文件`);
+        } else {
+          results.push("公告=略過");
+        }
+        const allSkipped = results.every(item => item.endsWith("=略過"));
+        setLiveVerificationStatus(
+          allSkipped
+            ? "來源抓取驗收略過：目前沒有可用的來源 key / URL。"
+            : `來源抓取驗收完成：${results.join(" / ")}`,
+          allSkipped
+        );
+      } catch (error) {
+        setLiveVerificationStatus(`來源抓取驗收失敗：${error.message}`, true);
+      } finally {
+        setBusy(button, false);
+        renderSettings();
+      }
+    }
+
+    function unwrap(value) {
+      return value && typeof value === "object" && "data" in value ? value.data : value;
+    }
+
+    async function loadRealStock(symbol) {
+      const pathSymbol = encodeURIComponent(symbol);
+      const [summary, priceData, techData, predictionData] = await Promise.all([
+        apiGet(`/stocks/${state.market}/${pathSymbol}/summary`),
+        apiGet(`/stocks/${state.market}/${pathSymbol}/prices?range=1M`),
+        apiGet(`/stocks/${state.market}/${pathSymbol}/technical-summary`),
+        apiGet(`/stocks/${state.market}/${pathSymbol}/prediction?horizonDays=5`)
+      ]);
+      return toStockShape(symbol, summary, priceData, techData, predictionData);
+    }
+
+    async function searchRealStocks(query, force) {
+      const raw = (query || "").trim();
+      if (!raw || (state.settings.mode !== "real" && !force)) return [];
+      const normalized = raw.toUpperCase();
+      const inferred = /^[0-9]{4,6}(\.TW)?$/.test(normalized) ? "TW" : state.market;
+      const markets = Array.from(new Set([inferred, state.market, inferred === "TW" ? "US" : "TW"]));
+      const responses = await Promise.all(markets.map(async market => {
+        const data = await apiGetOptional(`/stocks/${market}/search?query=${encodeURIComponent(raw)}`);
+        return Array.isArray(data) ? data : [];
+      }));
+      const merged = responses.flat()
+        .map(toSearchResult)
+        .filter(Boolean)
+        .sort((left, right) => searchResultRank(left, normalized) - searchResultRank(right, normalized));
+      const seen = new Set();
+      return merged.filter(item => {
+        const key = `${item.market}:${item.symbol}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 8);
+    }
+
+    function toSearchResult(item) {
+      const market = item.market || state.market;
+      const symbol = normalizeSymbol(market, item.symbol || "");
+      if (!symbol) return null;
+      const result = {
+        symbol,
+        market,
+        name: item.name || symbol,
+        source: item.source || "real-search",
+        currency: item.currency || (market === "TW" ? "TWD" : "USD"),
+        lastPrice: Number(item.lastPrice ?? item.price ?? 0),
+        changePercent: Number(item.changePercent ?? item.changePct ?? 0),
+        prices: Array.isArray(item.prices) ? item.prices.map(Number).filter(Number.isFinite) : []
+      };
+      stocks[market][symbol] = stock(
+        symbol,
+        result.name,
+        market,
+        result.currency,
+        Number.isFinite(result.lastPrice) && result.lastPrice > 0 ? result.lastPrice : 0,
+        Number.isFinite(result.changePercent) ? result.changePercent : 0,
+        result.prices.length ? result.prices : [result.lastPrice || 0]
+      );
+      stocks[market][symbol].source = result.source;
+      return result;
+    }
+
+    function searchResultRank(item, query) {
+      const symbol = item.symbol.replace(".TW", "");
+      const normalizedQuery = query.replace(".TW", "");
+      const livePenalty = (item.source || "").startsWith("mock") ? 20 : 0;
+      if (symbol === normalizedQuery) return livePenalty;
+      if (symbol.startsWith(normalizedQuery)) return livePenalty + 1;
+      return livePenalty + 2;
+    }
+
+    async function refreshRealSearchSuggestions() {
+      const input = document.getElementById("symbolSearch");
+      const query = input.value.trim();
+      const token = ++state.realSearch.token;
+      if (state.realSearch.timer) {
+        clearTimeout(state.realSearch.timer);
+        state.realSearch.timer = null;
+      }
+      if (state.settings.mode !== "real" || !query) {
+        state.realSearch.query = "";
+        state.realSearch.results = [];
+        refreshSymbols();
+        return;
+      }
+      state.realSearch.query = query;
+      try {
+        const results = await searchRealStocks(query);
+        if (token !== state.realSearch.token) return;
+        state.realSearch.results = results;
+        refreshSymbols();
+        if (results.length) {
+          const liveCount = results.filter(item => !(item.source || "").startsWith("mock")).length;
+          setWatchFeedback(`已從真實 API 找到 ${results.length} 筆候選，真實來源 ${liveCount} 筆。`);
+        } else {
+          setWatchFeedback(`真實 API 已搜尋 ${query}，目前沒有候選結果。`);
+        }
+      } catch (error) {
+        if (token !== state.realSearch.token) return;
+        state.realSearch.results = [];
+        refreshSymbols();
+        setWatchFeedback(`真實 API 搜尋失敗：${error.message}`);
+      }
+    }
+
+    async function loadRealAi(symbol) {
+      const request = { market: state.market, symbol, horizonDays: 5 };
+      const [analysis, comparison] = await Promise.all([
+        apiPost("/ai/analysis", { ...request, provider: state.provider }),
+        apiPost("/ai/model-comparison", { ...request, providers })
+      ]);
+      return {
+        analysis,
+        comparison: {
+          ...comparison,
+          results: (comparison.results || []).map(item => ({
+            provider: item.provider,
+            trend: item.trend,
+            score: Number(item.aiScore ?? item.score),
+            bullish: Math.round(Number(item.bullishProbability ?? 0) * 100),
+            risk: item.riskLevel || item.risk,
+            summary: item.summary,
+            source: item.source || "mock-ai"
+          }))
+        }
+      };
+    }
+
+    async function loadRealEvidence(symbol, queryText) {
+      return apiPost("/documents/retrieve", {
+        queryText: queryText || `${symbol} outlook guidance risk`,
+        topK: 3,
+        symbol,
+        market: state.market,
+        docType: null,
+        publishedFrom: new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString(),
+        publishedTo: new Date().toISOString()
+      });
+    }
+
+    async function refreshRealAnalysis() {
+      if (state.settings.mode !== "real" || !state.realStock) return render();
+      try {
+        const analysis = await apiPost("/ai/analysis", { market: state.market, symbol: state.symbol, provider: state.provider, horizonDays: 5 });
+        state.realAi = {
+          ...(state.realAi || {}),
+          analysis
+        };
+        state.realEvidence = analysis.evidence || await loadRealEvidence(state.symbol);
+        state.settings.lastDataLoad = `OK ${state.symbol} / ${state.provider}`;
+      } catch (error) {
+        state.settings.lastDataLoad = `AI 失敗：${error.message}`;
+      }
+      saveSettings();
+      render();
+    }
+
+    function toStockShape(symbol, summary, priceData, techData, predictionData) {
+      const fallback = stocks[state.market][symbol] || stock(symbol, symbol, state.market, state.market === "TW" ? "TWD" : "USD", 0, 0, [0, 0, 0]);
+      const price = summary.priceSnapshot || summary.price || summary;
+      const rawPrices = priceData.prices || priceData.items || priceData;
+      const prices = Array.isArray(rawPrices) ? rawPrices.map(item => Number(item.close ?? item.price ?? item.lastPrice ?? item)).filter(Number.isFinite) : fallback.prices;
+      const priceDates = Array.isArray(rawPrices) ? rawPrices.map(item => typeof item === "object" ? String(item.date || item.tradingDate || item.time || "") : "").filter(Boolean) : [];
+      const lastPrice = Number(price.lastPrice ?? price.price ?? summary.lastPrice ?? fallback.price);
+      const changePct = Number(price.changePercent ?? summary.changePercent ?? fallback.changePct);
+      const prediction = predictionData || {};
+      const tech = techData || {};
+      return {
+        ...fallback,
+        source: summary.source || "real-api",
+        symbol: summary.symbol || price.symbol || symbol,
+        name: summary.name || summary.companyName || fallback.name,
+        currency: summary.currency || price.currency || fallback.currency,
+        timezone: summary.timezone || fallback.timezone,
+        price: Number.isFinite(lastPrice) ? lastPrice : fallback.price,
+        changePct: Number.isFinite(changePct) ? changePct : fallback.changePct,
+        prices: prices.length ? prices : fallback.prices,
+        priceDates,
+        updatedAt: summary.updatedAt || price.updatedAt || prediction.generatedAt || new Date().toISOString(),
+        tech: {
+          MA5: Number(tech.ma5 ?? tech.MA5 ?? fallback.tech.MA5),
+          MA20: Number(tech.ma20 ?? tech.MA20 ?? fallback.tech.MA20),
+          MA60: Number(tech.ma60 ?? tech.MA60 ?? fallback.tech.MA60),
+          RSI14: Number(tech.rsi14 ?? tech.RSI14 ?? fallback.tech.RSI14),
+          MACD: tech.macdSignal || tech.MACD || fallback.tech.MACD,
+          ATR14: Number(tech.atr14 ?? tech.ATR14 ?? fallback.tech.ATR14)
+        },
+        prediction: {
+          upProbability: Number(prediction.upProbability ?? fallback.prediction.upProbability),
+          expectedReturn: Number(prediction.expectedReturn ?? fallback.prediction.expectedReturn),
+          volatility: Number(prediction.volatility ?? fallback.prediction.volatility),
+          risk: prediction.riskLevel || prediction.risk || fallback.prediction.risk,
+          modelVersion: prediction.modelVersion || fallback.prediction.modelVersion || "api"
+        }
+      };
+    }
+
+    function modelResults(s) {
+      if (state.settings.mode === "real" && state.realAi?.comparison?.results?.length) {
+        return state.realAi.comparison.results.map(item => state.failedProviders.includes(item.provider)
+          ? { provider: item.provider, failed: true, error: "模型回應逾時，已從共識分數排除。" }
+          : item);
+      }
+      const seed = s.symbol.length + Math.round(s.changePct * 10);
+      return providers.map((provider, i) => {
+        if (state.failedProviders.includes(provider)) {
+          return { provider, failed: true, error: "模型回應逾時，已從共識分數排除。" };
+        }
+        const score = Math.max(35, Math.min(90, 66 + seed % 8 + i * 2 - (provider === "DEEPSEEK" ? 5 : provider === "MIMO" ? 2 : 0)));
+        const risk = score < 62 || (provider === "DEEPSEEK" || provider === "MIMO") && s.changePct < 0 ? "HIGH" : "MEDIUM";
+        return {
+          provider,
+          trend: score > 72 ? "偏多" : score > 62 ? "中性偏多" : "震盪",
+          score,
+          bullish: Math.round((score / 100 - .06 + i * .01) * 100),
+          risk,
+          summary: risk === "HIGH" ? "波動風險偏高，需避免追價。" : "趨勢仍有支撐，需觀察量能延續。"
+        };
+      });
+    }
+
+    function priceClass(s) {
+      return `${s.market === "TW" ? "tw " : ""}${s.changePct >= 0 ? "up" : "down"}`;
+    }
+
+    function money(s) {
+      return new Intl.NumberFormat("zh-TW", { style: "currency", currency: s.currency, maximumFractionDigits: s.currency === "TWD" ? 1 : 2 }).format(s.price);
+    }
+
+    function marketLabel(market) {
+      return market === "TW" ? "台股" : "美股";
+    }
+
+    function modeLabel(mode) {
+      return mode === "real" ? "真實 API" : "模擬資料";
+    }
+
+    function isMockAiSource(source) {
+      return !source || String(source).startsWith("mock-ai");
+    }
+
+    function aiSourceMessage(source) {
+      const value = source || "mock-ai";
+      if (value === "mock-ai:no-gemini-key") return "後端沒有收到 Gemini Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
+      if (value === "mock-ai:no-openai-key") return "後端沒有收到 OpenAI Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
+      if (value === "mock-ai:no-deepseek-key") return "後端沒有收到 DeepSeek Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
+      if (value === "mock-ai:no-mimo-key") return "後端沒有收到 MIMO Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
+      if (value === "mock-ai:openai-http-401-invalid_api_key") return "OpenAI 拒絕目前的 API Key：請到 local-env.cmd 或網頁設定換成有效的 OpenAI platform key，然後重啟 backend。";
+      if (value === "mock-ai:openai-http-429-insufficient_quota") return "OpenAI Key 可被辨識，但帳號或 project 額度不足，請確認 billing / credits。";
+      if (value === "mock-ai:gemini-live-failed") return "Gemini 真實呼叫失敗，可能是 backend 尚未重啟、Gemini endpoint/model 錯誤、網路被擋或 Key 無效。";
+      if (value === "mock-ai:openai-live-failed") return "OpenAI 真實呼叫失敗，可能是模型名稱、網路、額度或 Key 驗證問題。";
+      if (value === "mock-ai:deepseek-live-failed") return "DeepSeek 真實呼叫失敗，已退回 mock。";
+      if (value === "mock-ai:mimo-live-failed") return "MIMO 真實呼叫失敗，可能是 backend 尚未重啟、MIMO endpoint/model 錯誤、網路被擋或 Key 無效。";
+      if (value.startsWith("mock-ai")) return "目前使用 mock-ai 回落結果，通常是尚未設定 API key 或真實呼叫失敗。";
+      return `目前使用 ${value}。`;
+    }
+
+    function riskLabel(value) {
+      return { HIGH: "高", MEDIUM: "中", LOW: "低", UNKNOWN: "未知" }[value] || value;
+    }
+
+    function trendLabel(value) {
+      return { BULLISH: "偏多", NEUTRAL: "中性", BEARISH: "偏空" }[value] || value;
+    }
+
+    function clampNumber(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function seriesReturn(prices) {
+      const first = prices[0] || 0;
+      const last = prices[prices.length - 1] || 0;
+      return first ? (last - first) / first : 0;
+    }
+
+    function historicalVolatility(prices) {
+      const returns = [];
+      for (let i = 1; i < prices.length; i++) {
+        if (prices[i - 1]) returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+      }
+      if (!returns.length) return 0;
+      const avg = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+      const variance = returns.reduce((sum, value) => sum + Math.pow(value - avg, 2), 0) / returns.length;
+      return Math.sqrt(variance);
+    }
+
+    function distancePct(value, base) {
+      return base ? (value - base) / base : 0;
+    }
+
+    function statCard(label, value, hint = "") {
+      return `<div class="chart-stat"><span>${label}</span><strong>${value}</strong>${hint ? `<small class="muted">${hint}</small>` : ""}</div>`;
+    }
+
+    function finiteNumber(value, fallback = 0) {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : fallback;
+    }
+
+    function rsiHint(value) {
+      if (!Number.isFinite(value)) return "缺少 RSI";
+      if (value >= 70) return "偏熱";
+      if (value <= 30) return "偏冷";
+      return "中性區";
+    }
+
+    function stockMetrics(s) {
+      const tech = s.tech || {};
+      const prediction = s.prediction || {};
+      const prices = (s.prices || []).map(Number).filter(Number.isFinite);
+      const fallbackPrice = finiteNumber(s.price, 0);
+      const safePrices = prices.length ? prices : [fallbackPrice];
+      const priceDates = Array.isArray(s.priceDates) ? s.priceDates.slice(-safePrices.length) : [];
+      const last = safePrices[safePrices.length - 1] || fallbackPrice;
+      const high = Math.max(...safePrices);
+      const low = Math.min(...safePrices);
+      const ma20 = finiteNumber(tech.MA20, NaN);
+      const ma60 = finiteNumber(tech.MA60, NaN);
+      const atr14 = finiteNumber(tech.ATR14, NaN);
+      const rsi14 = finiteNumber(tech.RSI14, NaN);
+      const periodReturn = seriesReturn(safePrices);
+      const rangePct = low ? (high - low) / low : 0;
+      const ma20Distance = Number.isFinite(ma20) ? distancePct(last, ma20) : NaN;
+      const ma60Distance = Number.isFinite(ma60) ? distancePct(last, ma60) : NaN;
+      const atrPct = last && Number.isFinite(atr14) ? atr14 / last : NaN;
+      const histVol = historicalVolatility(safePrices);
+      return {
+        safePrices,
+        priceDates,
+        last,
+        high,
+        low,
+        highIndex: safePrices.indexOf(high),
+        lowIndex: safePrices.indexOf(low),
+        periodReturn,
+        rangePct,
+        ma20Distance,
+        ma60Distance,
+        atr14,
+        atrPct,
+        rsi14,
+        histVol,
+        expectedReturn: finiteNumber(prediction.expectedReturn, NaN)
+      };
+    }
+
+    function chartInsightText(s, metrics) {
+      const direction = metrics.periodReturn >= .03
+        ? "呈現上攻"
+        : metrics.periodReturn <= -.03
+          ? "偏向回落"
+          : "維持震盪";
+      const ma20Text = Number.isFinite(metrics.ma20Distance)
+        ? metrics.ma20Distance >= 0 ? "站上中期均線" : "低於中期均線"
+        : "MA20 缺少資料";
+      const atrText = Number.isFinite(metrics.atrPct)
+        ? metrics.atrPct >= .04 ? "波動偏大" : metrics.atrPct >= .02 ? "波動中等" : "波動偏低"
+        : "ATR 缺少資料";
+      return `${s.symbol} 這段價格${direction}，區間漲跌 ${pct(metrics.periodReturn)}、高低震幅 ${pct(metrics.rangePct)}。目前距 MA20 ${pct(metrics.ma20Distance)}（${ma20Text}），RSI14 ${num(metrics.rsi14)}（${rsiHint(metrics.rsi14)}），ATR14 約佔價格 ${pct(metrics.atrPct)}（${atrText}）。`;
+    }
+
+    function shortDateLabel(value) {
+      if (!value) return "";
+      const match = String(value).match(/(\d{4})-(\d{2})-(\d{2})/);
+      return match ? `${match[2]}/${match[3]}` : String(value).slice(0, 5);
+    }
+
+    function drawChart(s) {
+      const metrics = stockMetrics(s);
+      const safePrices = metrics.safePrices;
+      const technicalLines = [
+        { key: "MA5", label: "MA5", value: Number(s.tech?.MA5), color: "#ffc857" },
+        { key: "MA20", label: "MA20", value: Number(s.tech?.MA20), color: "#6bbcff" },
+        { key: "MA60", label: "MA60", value: Number(s.tech?.MA60), color: "#c99cff" }
+      ].filter(item => Number.isFinite(item.value) && item.value > 0);
+      const scaleValues = safePrices.concat(technicalLines.map(item => item.value), [s.price || metrics.last]);
+      const rawMin = Math.min(...scaleValues);
+      const rawMax = Math.max(...scaleValues);
+      const padding = Math.max((rawMax - rawMin) * 0.12, Math.abs(rawMax || 1) * 0.01);
+      const min = rawMin - padding;
+      const max = rawMax + padding;
+      const xForIndex = index => 34 + index * (632 / Math.max(1, safePrices.length - 1));
+      const yForValue = value => 196 - ((value - min) / (max - min || 1)) * 158;
+      const coords = safePrices.map((p, i) => {
+        const x = xForIndex(i);
+        const y = yForValue(p);
+        return { x, y, value: p };
+      });
+      const points = coords.map(point => `${point.x},${point.y}`).join(" ");
+      const area = `34,204 ${points} 666,204`;
+      const last = metrics.last;
+      const high = metrics.high;
+      const low = metrics.low;
+      const highIndex = metrics.highIndex;
+      const lowIndex = metrics.lowIndex;
+      const latestY = yForValue(last);
+      const tickIndexes = Array.from(new Set([0, Math.floor((safePrices.length - 1) * .25), Math.floor((safePrices.length - 1) * .5), Math.floor((safePrices.length - 1) * .75), safePrices.length - 1]))
+        .filter(index => index >= 0 && index < safePrices.length);
+      const xAxisSvg = tickIndexes.map(index => `
+        <line x1="${xForIndex(index)}" x2="${xForIndex(index)}" y1="204" y2="209" stroke="rgba(157,186,183,.45)"/>
+        <text x="${xForIndex(index)}" y="224" text-anchor="middle" fill="#9dbab7" font-size="11">${shortDateLabel(metrics.priceDates[index]) || `D-${safePrices.length - index - 1}`}</text>
+      `).join("");
+      const lineSvg = technicalLines.map(item => {
+        const y = clampNumber(yForValue(item.value), 32, 202);
+        return `
+          <line x1="34" x2="666" y1="${y}" y2="${y}" stroke="${item.color}" stroke-opacity=".62" stroke-dasharray="7 7"/>
+          <text x="670" y="${y + 4}" fill="${item.color}" font-size="12">${item.label} ${num(item.value)}</text>
+        `;
+      }).join("");
+      document.getElementById("priceChart").innerHTML = `
+        <defs>
+          <linearGradient id="g" x1="0" x2="1"><stop stop-color="#5ff3d2"/><stop offset=".52" stop-color="#6bbcff"/><stop offset="1" stop-color="#ffc857"/></linearGradient>
+          <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5ff3d2" stop-opacity=".24"/><stop offset="1" stop-color="#5ff3d2" stop-opacity="0"/></linearGradient>
+          <filter id="softGlow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <g stroke="rgba(144,202,196,.16)">${[40,80,120,160,200].map(y => `<line x1="24" x2="680" y1="${y}" y2="${y}"/>`).join("")}</g>
+        <text x="26" y="28" fill="#9dbab7" font-size="12">高 ${num(high)}</text>
+        <text x="26" y="214" fill="#9dbab7" font-size="12">低 ${num(low)}</text>
+        ${lineSvg}
+        <polygon class="chart-area" points="${area}" fill="url(#areaG)"/>
+        <polyline class="chart-line" points="${points}" fill="none" stroke="url(#g)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)"/>
+        ${coords.map((point, i) => `<circle class="chart-dot" style="animation-delay:${i * 55}ms" cx="${point.x}" cy="${point.y}" r="4.5" fill="#edf7ef" stroke="#5ff3d2" stroke-width="2"/>`).join("")}
+        <circle cx="${xForIndex(highIndex)}" cy="${yForValue(high)}" r="6" fill="#ffc857" fill-opacity=".92"/>
+        <circle cx="${xForIndex(lowIndex)}" cy="${yForValue(low)}" r="6" fill="#ff6b6b" fill-opacity=".88"/>
+        <line x1="34" x2="666" y1="${latestY}" y2="${latestY}" stroke="#edf7ef" stroke-opacity=".26" stroke-dasharray="3 7"/>
+        <rect x="520" y="${clampNumber(latestY - 18, 18, 190)}" width="144" height="28" rx="14" fill="rgba(4,16,22,.82)" stroke="rgba(237,247,239,.22)"/>
+        <text x="532" y="${clampNumber(latestY, 36, 208)}" fill="#edf7ef" font-size="12">最新 ${num(last)}</text>
+        ${xAxisSvg}
+      `;
+      document.getElementById("chartLegend").innerHTML = `
+        <span class="legend-item" style="color:#5ff3d2"><i class="legend-swatch"></i>價格</span>
+        <span class="legend-item" style="color:#edf7ef"><i class="legend-swatch"></i>最新價</span>
+        <span class="legend-item" style="color:#ffc857"><i class="legend-swatch"></i>區間高點</span>
+        <span class="legend-item" style="color:#ff6b6b"><i class="legend-swatch"></i>區間低點</span>
+        <span class="legend-item" style="color:#ffc857"><i class="legend-swatch"></i>MA5</span>
+        <span class="legend-item" style="color:#6bbcff"><i class="legend-swatch"></i>MA20</span>
+        <span class="legend-item" style="color:#c99cff"><i class="legend-swatch"></i>MA60</span>
+      `;
+      document.getElementById("chartStats").innerHTML = [
+        statCard("區間漲跌", pct(metrics.periodReturn), `${safePrices.length} 個交易日`),
+        statCard("高低震幅", pct(metrics.rangePct), `${num(low)} - ${num(high)}`),
+        statCard("距 MA20", pct(metrics.ma20Distance), Number.isFinite(metrics.ma20Distance) ? (metrics.ma20Distance >= 0 ? "站上中期均線" : "低於中期均線") : "缺少均線"),
+        statCard("距 MA60", pct(metrics.ma60Distance), Number.isFinite(metrics.ma60Distance) ? (metrics.ma60Distance >= 0 ? "長線支撐上方" : "長線支撐下方") : "缺少均線"),
+        statCard("歷史波動", pct(metrics.histVol), "逐點報酬標準差"),
+        statCard("ATR14", num(metrics.atr14), `約價格 ${pct(metrics.atrPct)}`),
+        statCard("RSI14", num(metrics.rsi14), rsiHint(metrics.rsi14)),
+        statCard("預期報酬", pct(metrics.expectedReturn), `5 日 · ${s.prediction?.modelVersion || "model"}`)
+      ].join("");
+      document.getElementById("chartInsight").textContent = chartInsightText(s, metrics);
+    }
+
+    function pulseInterface() {
+      document.body.classList.remove("is-refreshing");
+      void document.body.offsetWidth;
+      document.body.classList.add("is-refreshing");
+      clearTimeout(renderPulseTimer);
+      renderPulseTimer = setTimeout(() => document.body.classList.remove("is-refreshing"), 620);
+    }
+
+    function showInteractionToast(message) {
+      const toast = document.getElementById("interactionToast");
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.add("active");
+      clearTimeout(interactionToastTimer);
+      interactionToastTimer = setTimeout(() => toast.classList.remove("active"), 1100);
+    }
+
+    function bindInteractiveCards() {
+      document.querySelectorAll(".card").forEach(card => {
+        if (card.dataset.interactiveBound) return;
+        card.dataset.interactiveBound = "1";
+        card.addEventListener("pointermove", e => {
+          const rect = card.getBoundingClientRect();
+          card.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+          card.style.setProperty("--my", `${e.clientY - rect.top}px`);
+        });
+      });
+    }
+
+    function render() {
+      const s = selectedStock();
+      const results = modelResults(s);
+      const okResults = results.filter(r => !r.failed);
+      const consensus = okResults.reduce((sum, r) => sum + r.score, 0) / okResults.length;
+      const active = results.find(r => r.provider === state.provider) || results[0];
+      const realAnalysis = state.settings.mode === "real" ? state.realAi?.analysis : null;
+      const analysisSource = realAnalysis?.source || active.source || "mock-ai";
+      const evidence = state.settings.mode === "real" ? (realAnalysis?.evidence || state.realEvidence || []) : [];
+      const metrics = stockMetrics(s);
+      document.getElementById("title").textContent = `${s.name} · ${s.symbol}`;
+      document.getElementById("subtitle").textContent = `${marketLabel(s.market)} · ${s.currency} · ${s.timezone}`;
+      document.getElementById("dataTime").textContent = `資料時間 ${new Date(s.updatedAt || Date.now()).toLocaleString("zh-TW")} · ${s.source || "mock"}`;
+      document.getElementById("sourceNotice").innerHTML = buildSourceNotice(s, analysisSource);
+      document.getElementById("sourceNotice").classList.toggle("active", state.settings.mode === "real");
+      document.getElementById("price").textContent = money(s);
+      document.getElementById("change").className = priceClass(s);
+      document.getElementById("change").textContent = `${s.changePct >= 0 ? "+" : ""}${s.changePct.toFixed(2)}%`;
+      document.getElementById("consensus").textContent = consensus.toFixed(1);
+      document.getElementById("consensusText").textContent = `平均偏多機率 ${Math.round(okResults.reduce((a, r) => a + r.bullish, 0) / okResults.length)}%`;
+      document.getElementById("upProb").textContent = `${Math.round(s.prediction.upProbability * 100)}%`;
+      document.getElementById("risk").textContent = riskLabel(s.prediction.risk);
+      document.getElementById("riskText").textContent = `波動率 ${(s.prediction.volatility * 100).toFixed(1)}%`;
+      document.getElementById("summaryTable").innerHTML = rows({
+        "股票代碼": s.symbol,
+        "市場": marketLabel(s.market),
+        "幣別": s.currency,
+        "最新價": money(s),
+        "區間漲跌": pct(metrics.periodReturn),
+        "區間最高": num(metrics.high),
+        "區間最低": num(metrics.low),
+        "高低震幅": pct(metrics.rangePct),
+        "距 MA20": pct(metrics.ma20Distance),
+        "距 MA60": pct(metrics.ma60Distance),
+        "RSI14": `${num(metrics.rsi14)} · ${rsiHint(metrics.rsi14)}`,
+        "ATR14": `${num(metrics.atr14)} · 約價格 ${pct(metrics.atrPct)}`,
+        "資料來源": s.source || "mock",
+        "預期報酬": pct(metrics.expectedReturn),
+        "模型版本": s.prediction?.modelVersion || "mock-xgboost-v0.1"
+      });
+      document.getElementById("techTable").innerHTML = rows({ MA5: num(s.tech.MA5), MA20: num(s.tech.MA20), MA60: num(s.tech.MA60), RSI14: s.tech.RSI14.toFixed(1), MACD: trendLabel(s.tech.MACD), ATR14: num(s.tech.ATR14) });
+      document.getElementById("providerLabel").textContent = `${state.provider} / ${analysisSource}`;
+      document.getElementById("trend").textContent = active.failed ? "讀取失敗" : realAnalysis?.trend || active.trend;
+      document.getElementById("aiScore").textContent = active.failed ? "--" : realAnalysis?.aiScore ?? active.score;
+      document.getElementById("analysisProb").textContent = `${Math.round(s.prediction.upProbability * 100)}%`;
+      document.getElementById("bullish").innerHTML = list(realAnalysis?.bullishReasons || ["短期均線維持支撐", "成交量未明顯失速", "模型預測仍偏正向"]);
+      document.getElementById("bearish").innerHTML = list(realAnalysis?.bearishRisks || ["追價風險上升", "大盤回檔會放大波動", "需確認資料時間與財報事件"]);
+      document.getElementById("conclusion").textContent = `${active.failed ? active.error : realAnalysis?.conclusion || active.summary} 目前風險等級 ${riskLabel(s.prediction.risk)}，這不是投資建議，需搭配停損與資金控管。`;
+      document.getElementById("analysisEvidence").innerHTML = renderEvidence(evidence, {
+        empty: state.settings.mode === "real"
+          ? "目前沒有可顯示的文件證據。可先到設定匯入新聞、公告或法說會內容。"
+          : "目前為模擬資料模式，切到真實 API 後才會顯示實際檢索證據。"
+      });
+      document.getElementById("compareRows").innerHTML = results.map(r => r.failed
+        ? `<tr><td class="failed">${r.provider}</td><td colspan="4" class="failed">${r.error}</td></tr>`
+        : `<tr><td>${r.provider}</td><td>${r.trend}</td><td>${r.score}</td><td>${r.bullish}%</td><td>${riskLabel(r.risk)}</td></tr>`).join("");
+      document.getElementById("divergence").textContent = divergence(okResults);
+      document.getElementById("divergenceReason").textContent = state.failedProviders.length
+        ? "部分模型失敗，已排除後重新計算共識與分歧。"
+        : evidence.length
+          ? `本次模型比較共用 ${evidence.length} 筆檢索證據，因此差異主要來自模型判讀，不是檢索來源。`
+          : "多數模型方向接近，但風險評估仍有差異；共識分數會忽略失敗模型。";
+      document.getElementById("scoreBars").innerHTML = okResults.map(r => `<div class="bar-row"><span>${r.provider}</span><div class="track"><div class="fill" style="width:${r.score}%"></div></div><strong>${r.score}</strong></div>`).join("");
+      document.getElementById("compareEvidence").innerHTML = renderEvidence(evidence, {
+        empty: state.settings.mode === "real"
+          ? "這次模型比較尚未拿到共用檢索證據。"
+          : "模擬資料模式不顯示共用檢索上下文。"
+      });
+      document.getElementById("providerButtons").innerHTML = providers.map(p => `<button class="${p === state.provider ? "active" : ""} ${state.failedProviders.includes(p) ? "failed" : ""}" data-provider="${p}">${p}</button>`).join("");
+      renderWatch();
+      renderSettings();
+      drawChart(s);
+      document.getElementById("chatAnswer").textContent = `目前 ${s.symbol} 的 5 日 ${analysisSource} 上漲機率為 ${Math.round(s.prediction.upProbability * 100)}%，主要要看 MA20 是否失守與波動是否擴大。`;
+      document.getElementById("chatEvidence").innerHTML = renderEvidence(evidence, {
+        empty: state.settings.mode === "real"
+          ? "目前沒有 AI 問答可引用的文件證據。可先匯入新聞或公告後再提問。"
+          : "目前為模擬資料模式，切到真實 API 後才會顯示 AI 問答參考證據。"
+      });
+      pulseInterface();
+      bindInteractiveCards();
+    }
+
+    function rows(obj) { return Object.entries(obj).map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join(""); }
+    function list(items) { return items.map(x => `<li>${x}</li>`).join(""); }
+    function pct(v) {
+      const numeric = Number(v);
+      if (!Number.isFinite(numeric)) return "--";
+      return `${numeric >= 0 ? "+" : ""}${(numeric * 100).toFixed(2)}%`;
+    }
+    function num(v) {
+      const numeric = Number(v);
+      if (!Number.isFinite(numeric)) return "--";
+      return numeric.toLocaleString("zh-TW", { maximumFractionDigits: 2 });
+    }
+    function setBusy(button, busy, label) {
+      if (!button.dataset.label) button.dataset.label = button.textContent;
+      button.disabled = busy;
+      button.textContent = busy ? label : button.dataset.label;
+    }
+
+    function sourceKeyControl(kind, pill, hasLocalKey) {
+      return `
+        <span class="inline-key-actions">
+          ${pill}
+          <button class="mini-action" data-source-key="${kind}">${hasLocalKey ? "更新" : "輸入"}</button>
+          ${hasLocalKey ? `<button class="mini-action" data-clear-source-key="${kind}">清除</button>` : ""}
+        </span>
+      `;
+    }
+
+    async function editSourceKey(kind) {
+      const config = {
+        "alpha-vantage": {
+          label: "Alpha Vantage API Key",
+          key: "alphaVantageApiKey"
+        },
+        finmind: {
+          label: "FinMind API Token",
+          key: "finMindApiToken"
+        },
+        fmp: {
+          label: "FMP API Key",
+          key: "fmpApiKey"
+        }
+      }[kind];
+      if (!config) return;
+      const value = await openKeyEntryModal(config.label, "只會存在本機瀏覽器，不會顯示在頁面上；後續來源抓取會自動帶入。");
+      if (value === null) return;
+      const trimmed = value.trim();
+      if (!trimmed) {
+        setLiveVerificationStatus(`${config.label} 未輸入，已保留原設定。`, true);
+        return;
+      }
+      state.settings[config.key] = trimmed;
+      saveSettings();
+      try {
+        await refreshHealthStatus();
+        setLiveVerificationStatus(`${config.label} 已儲存在本機，後續來源抓取會自動帶入。`, false);
+      } catch (error) {
+        setLiveVerificationStatus(`${config.label} 已儲存在本機，但 /health 驗證失敗：${error.message}`, true);
+      }
+      renderSettings();
+    }
+
+    async function clearSourceKey(kind) {
+      const config = {
+        "alpha-vantage": {
+          label: "Alpha Vantage API Key",
+          key: "alphaVantageApiKey"
+        },
+        finmind: {
+          label: "FinMind API Token",
+          key: "finMindApiToken"
+        },
+        fmp: {
+          label: "FMP API Key",
+          key: "fmpApiKey"
+        }
+      }[kind];
+      if (!config) return;
+      state.settings[config.key] = "";
+      saveSettings();
+      try {
+        await refreshHealthStatus();
+      } catch (error) {
+        state.settings.health = `連線失敗：${error.message}`;
+      }
+      setLiveVerificationStatus(`已清除本機 ${config.label}。`, false);
+      renderSettings();
+    }
+
+    function providerKeyControl(kind, pill, hasKey) {
+      return `
+        <span class="inline-key-actions">
+          ${pill}
+          <button class="mini-action" data-provider-key="${kind}">${hasKey ? "更新" : "輸入"}</button>
+          ${hasKey ? `<button class="mini-action" data-clear-provider-key="${kind}">清除</button>` : ""}
+        </span>
+      `;
+    }
+
+    function providerKeyConfig(kind) {
+      return {
+        OPENAI: {
+          label: "OpenAI API Key",
+          localKey: "openAiApiKey",
+          storedKey: "hasStoredOpenAiApiKey",
+          payloadKey: "openAiApiKey"
+        },
+        GEMINI: {
+          label: "Gemini API Key",
+          localKey: "geminiApiKey",
+          storedKey: "hasStoredGeminiApiKey",
+          payloadKey: "geminiApiKey"
+        },
+        DEEPSEEK: {
+          label: "DeepSeek API Key",
+          localKey: "deepSeekApiKey",
+          storedKey: "hasStoredDeepSeekApiKey",
+          payloadKey: "deepSeekApiKey"
+        },
+        MIMO: {
+          label: "MIMO API Key",
+          localKey: "mimoApiKey",
+          storedKey: "hasStoredMimoApiKey",
+          payloadKey: "mimoApiKey"
+        }
+      }[kind];
+    }
+
+    async function editProviderKey(kind) {
+      const config = providerKeyConfig(kind);
+      if (!config) return;
+      const value = await openKeyEntryModal(config.label, state.settings.authToken ? "登入狀態會儲存到後端帳號設定；不會顯示在頁面上。" : "未登入時只會存在本機瀏覽器；不會顯示在頁面上。");
+      if (value === null) return;
+      const trimmed = value.trim();
+      if (!trimmed) {
+        setAuthMessage(`${config.label} 未輸入，已保留原設定。`, true);
+        return;
+      }
+      try {
+        if (state.settings.authToken) {
+          const payload = {
+            preferredProvider: kind,
+            [config.payloadKey]: trimmed
+          };
+          const data = await apiPut("/account/settings", payload);
+          state.settings.preferredProvider = data.preferredProvider || kind;
+          state.settings.hasStoredOpenAiApiKey = readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, kind === "OPENAI");
+          state.settings.hasStoredGeminiApiKey = readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, kind === "GEMINI");
+          state.settings.hasStoredDeepSeekApiKey = readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, kind === "DEEPSEEK");
+          state.settings.hasStoredMimoApiKey = readStoredProviderKey(data, "MIMO", state.settings.hasStoredMimoApiKey, kind === "MIMO");
+          state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
+          state.settings[config.localKey] = "";
+        } else {
+          state.settings[config.localKey] = trimmed;
+          state.settings.preferredProvider = kind;
+        }
+        setProvider(kind);
+        saveSettings();
+        try {
+          await refreshHealthStatus();
+        } catch (error) {
+          state.settings.health = `連線失敗：${error.message}`;
+        }
+        setAuthMessage(`${config.label} 已儲存，並切換偏好 AI 為 ${kind}。`, false);
+      } catch (error) {
+        setAuthMessage(`${config.label} 儲存失敗：${error.message}`, true);
+      }
+      renderSettings();
+    }
+
+    function openKeyEntryModal(title, hint) {
+      const modal = document.getElementById("keyEntryModal");
+      const input = document.getElementById("keyEntryInput");
+      document.getElementById("keyEntryTitle").textContent = title;
+      document.getElementById("keyEntryHint").textContent = hint;
+      input.value = "";
+      modal.classList.remove("hidden");
+      modal.setAttribute("aria-hidden", "false");
+      setTimeout(() => input.focus(), 0);
+      return new Promise(resolve => {
+        keyEntryResolver = resolve;
+      });
+    }
+
+    function closeKeyEntryModal(value) {
+      const modal = document.getElementById("keyEntryModal");
+      const input = document.getElementById("keyEntryInput");
+      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+      const resolver = keyEntryResolver;
+      keyEntryResolver = null;
+      const result = value === undefined ? null : value;
+      input.value = "";
+      if (resolver) resolver(result);
+    }
+    function setChatBusy(busy) {
+      document.querySelectorAll("[data-question]").forEach(button => button.disabled = busy);
+      document.getElementById("chatInput").disabled = busy;
+      if (busy) document.getElementById("chatAnswer").textContent = "AI 回覆產生中...";
+    }
+    function divergence(results) {
+      if (results.length < 2) return "UNKNOWN";
+      const scores = results.map(r => r.score);
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+      const sd = Math.sqrt(scores.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / scores.length);
+      return sd > 15 ? "HIGH" : sd > 8 ? "MEDIUM" : "LOW";
+    }
+
+    function renderEvidence(items, options = {}) {
+      if (!items || !items.length) {
+        return `<div class="evidence-empty">${options.empty || "目前沒有可顯示的文件證據。"}</div>`;
+      }
+      return items.map(item => `
+        <div class="evidence-item">
+          <strong>${item.title}</strong>
+          <div class="evidence-meta">${item.source} · ${new Date(item.publishedAt).toLocaleDateString("zh-TW")} · score ${Number(item.score).toFixed(2)}</div>
+          <div class="evidence-tags">
+            <span class="evidence-tag">${item.docType}</span>
+            <span class="evidence-tag">${item.symbol}</span>
+            <span class="evidence-tag">${item.market}</span>
+          </div>
+          <div>${item.snippet}</div>
+        </div>
+      `).join("");
+    }
+
+    async function askChat(message) {
+      if (document.getElementById("chatInput").disabled) return;
+      const s = selectedStock();
+      document.getElementById("chatInput").value = message;
+      setChatBusy(true);
+      try {
+        if (state.settings.mode === "real" && state.realStock) {
+          const data = await apiPost("/ai/chat", { market: state.market, symbol: state.symbol, provider: state.provider, message });
+          const evidence = data.evidence || await loadRealEvidence(state.symbol, `${state.symbol} ${message}`);
+          state.realEvidence = evidence;
+          const source = data.source || "openai-responses";
+          document.getElementById("chatAnswer").textContent = `[${source}] ${data.message || data.answer || ""}`;
+          document.getElementById("chatEvidence").innerHTML = renderEvidence(evidence);
+          return;
+        }
+        document.getElementById("chatAnswer").textContent = `[mock-ai] 根據目前模擬資料：${message} 重點是價格是否守住 MA20、模型分歧是否擴大，以及是否有重大新聞或財報事件。`;
+        document.getElementById("chatEvidence").innerHTML = renderEvidence([]);
+      } catch (error) {
+          state.settings.lastDataLoad = `AI 問答失敗：${error.message}`;
+          saveSettings();
+          renderSettings();
+          document.getElementById("chatAnswer").textContent = `[mock-ai] 根據目前模擬資料：${message} 重點是價格是否守住 MA20、模型分歧是否擴大，以及是否有重大新聞或財報事件。`;
+          document.getElementById("chatEvidence").innerHTML = renderEvidence(state.realEvidence || []);
+      } finally {
+        setChatBusy(false);
+      }
+    }
+
+    async function runBacktest() {
+      const s = selectedStock();
+      const minScore = Number(document.getElementById("minScore").value);
+      const minProb = Number(document.getElementById("minProb").value);
+      const button = document.getElementById("runBacktest");
+      const ruleText = `AI 分數 >= ${minScore} / 機率 >= ${Math.round(minProb * 100)}%`;
+      let renderedReal = false;
+      document.getElementById("backtestRule").textContent = ruleText;
+      document.getElementById("backtestStatus").innerHTML = statusPill("回測執行中", "warn");
+      setBusy(button, true, "回測中...");
+      try {
+        if (state.settings.mode === "real" && state.realStock) {
+          const data = await apiPost("/backtests", {
+            market: state.market,
+            symbol: state.symbol,
+            strategy: { minAiScore: minScore, minUpProbability: minProb, maxRiskLevel: "MEDIUM" }
+          });
+          document.getElementById("backtestSource").textContent = "真實 API";
+          document.getElementById("backtestState").textContent = "完成";
+          document.getElementById("backtestStatus").innerHTML = statusPill("真實回測完成", "good");
+          document.getElementById("backtestRows").innerHTML = rows({
+            "股票代碼": data.symbol,
+            "總報酬": pct(data.totalReturn),
+            "勝率": `${Math.round(data.winRate * 100)}%`,
+            "最大回撤": pct(data.maxDrawdown),
+            "夏普比率": Number(data.sharpeRatio).toFixed(2),
+            "交易次數": data.tradeCount
+          });
+          document.getElementById("backtestNote").textContent = "目前顯示真實 API 回測回傳值；仍需自行判讀策略穩定性。";
+          renderedReal = true;
+          return;
+        }
+      } catch (error) {
+          state.settings.lastDataLoad = `回測失敗：${error.message}`;
+          saveSettings();
+          renderSettings();
+          document.getElementById("backtestStatus").innerHTML = statusPill("真實回測失敗，已回落模擬結果", "warn");
+      } finally {
+        if (!renderedReal) {
+          const totalReturn = (modelResults(s)[0].score - minScore) / 100 + (s.prediction.upProbability - minProb);
+          document.getElementById("backtestSource").textContent = "模擬資料";
+          document.getElementById("backtestState").textContent = state.settings.mode === "real" && state.realStock ? "回落結果" : "完成";
+          document.getElementById("backtestRows").innerHTML = rows({
+            "股票代碼": s.symbol,
+            "總報酬": pct(totalReturn),
+            "勝率": `${Math.round(48 + totalReturn * 60)}%`,
+            "最大回撤": "-9.8%",
+            "夏普比率": (1.05 + totalReturn).toFixed(2),
+            "交易次數": 42
+          });
+          document.getElementById("backtestNote").textContent = state.settings.mode === "real" && state.realStock
+            ? "真實回測失敗，已改用模擬結果顯示；不代表實際績效。"
+            : "回測使用模擬歷史資料，不代表未來績效。";
+          if (!(state.settings.mode === "real" && state.realStock)) {
+            document.getElementById("backtestStatus").innerHTML = statusPill("模擬回測", "warn");
+          }
+        }
+        setBusy(button, false);
+      }
+    }
+
+    function renderWatch() {
+      document.getElementById("watchFeedback").textContent = state.watchFeedback || "";
+      document.getElementById("watchRows").innerHTML = state.watch.map(key => {
+        const s = watchStock(key);
+        if (!s) return "";
+        const score = Math.round(modelResults(s).reduce((a, r) => a + r.score, 0) / 4);
+        return `<tr><td>${s.symbol}</td><td>${marketLabel(s.market)}</td><td>${money(s)}</td><td class="${priceClass(s)}">${s.changePct >= 0 ? "+" : ""}${s.changePct.toFixed(2)}%</td><td>${score}</td><td>${riskLabel(s.prediction.risk)}</td><td><button data-remove-watch="${key}">移除</button></td></tr>`;
+      }).join("");
+    }
+
+    function watchStock(key) {
+      const [market, symbol] = key.split(":");
+      if (state.realStock && state.realStock.market === market && state.realStock.symbol === symbol) return state.realStock;
+      return stocks[market]?.[symbol] || null;
+    }
+
+    async function removeWatch(key) {
+      state.watch = state.watch.filter(item => item !== key);
+      saveWatch();
+      setWatchFeedback(`已從自選移除 ${key.split(":")[1]}`);
+      renderWatch();
+      if (state.settings.mode === "real") {
+        const [market, symbol] = key.split(":");
+        try {
+          await fetch(`${state.settings.apiBaseUrl}/watchlist/${market}/${encodeURIComponent(symbol)}`, {
+            method: "DELETE",
+            headers: authHeaders({ Accept: "application/json" })
+          });
+          state.settings.lastDataLoad = `自選股已移除 ${symbol}`;
+        } catch (error) {
+          state.settings.lastDataLoad = `自選股移除失敗：${error.message}`;
+        }
+        saveSettings();
+        renderSettings();
+      }
+    }
+
+    function renderSettings() {
+      const s = selectedStock();
+      const aiSource = state.realAi?.analysis?.source || modelResults(s).find(r => r.provider === state.provider)?.source || "mock-ai";
+      const providers = state.settings.providerStatus;
+      const openAiConfigured = providers ? providers.openAiConfigured : null;
+      const serverAlphaVantageConfigured = providers ? providers.alphaVantageConfigured : null;
+      const localAlphaVantageConfigured = !!state.settings.alphaVantageApiKey;
+      const alphaVantageConfigured = serverAlphaVantageConfigured || localAlphaVantageConfigured;
+      const serverFmpConfigured = providers ? providers.fmpConfigured : null;
+      const localFmpConfigured = !!state.settings.fmpApiKey;
+      const fmpConfigured = serverFmpConfigured || localFmpConfigured;
+      const fmpNewsConfigured = providers ? (providers.fmpNewsConfigured || localFmpConfigured) : localFmpConfigured;
+      const fmpTranscriptConfigured = providers ? (providers.fmpTranscriptConfigured || localFmpConfigured) : localFmpConfigured;
+      const finMindConfigured = providers ? providers.finMindConfigured : null;
+      const finMindNewsConfigured = providers ? (providers.finMindNewsConfigured ?? providers.finMindConfigured) : null;
+      const finMindFinancialsConfigured = providers ? (providers.finMindFinancialsConfigured ?? providers.finMindConfigured) : null;
+      const serverFinMindTokenConfigured = providers ? providers.finMindTokenConfigured : null;
+      const finMindTokenConfigured = serverFinMindTokenConfigured || !!state.settings.finMindApiToken;
+      const yahooFinanceUsConfigured = providers ? providers.yahooFinanceUsConfigured : null;
+      const yahooFinanceNewsConfigured = providers ? providers.yahooFinanceNewsConfigured : null;
+      const yahooFinanceFinancialsConfigured = providers ? providers.yahooFinanceFinancialsConfigured : null;
+      const deepSeekConfigured = providers ? providers.deepSeekConfigured : null;
+      const mimoConfigured = providers ? providers.mimoConfigured : null;
+      const loggedIn = !!state.settings.authToken;
+      const localGeminiConfigured = loggedIn ? (state.settings.hasStoredGeminiApiKey || !!state.settings.geminiApiKey) : !!state.settings.geminiApiKey;
+      const geminiConfigured = providers?.geminiConfigured || localGeminiConfigured;
+      const localDeepSeekConfigured = loggedIn ? (state.settings.hasStoredDeepSeekApiKey || !!state.settings.deepSeekApiKey) : !!state.settings.deepSeekApiKey;
+      const effectiveDeepSeekConfigured = deepSeekConfigured || localDeepSeekConfigured;
+      const localMimoConfigured = loggedIn ? (state.settings.hasStoredMimoApiKey || !!state.settings.mimoApiKey) : !!state.settings.mimoApiKey;
+      const effectiveMimoConfigured = mimoConfigured || localMimoConfigured;
+      const alphaVantageNewsConfigured = providers ? (providers.alphaVantageNewsConfigured || localAlphaVantageConfigured) : localAlphaVantageConfigured;
+      const usNewsConfigured = !!alphaVantageNewsConfigured || !!fmpNewsConfigured || !!yahooFinanceNewsConfigured;
+      const usNewsSourceLabel = alphaVantageNewsConfigured ? "Alpha 就緒" : fmpNewsConfigured ? "FMP 就緒" : yahooFinanceNewsConfigured ? "Yahoo 就緒" : "缺少";
+      const usNewsPillLabel = alphaVantageNewsConfigured ? "alpha ready" : fmpNewsConfigured ? "fmp ready" : yahooFinanceNewsConfigured ? "yahoo ready" : "missing";
+      const alphaVantageTranscriptConfigured = providers ? (providers.alphaVantageTranscriptConfigured || localAlphaVantageConfigured) : localAlphaVantageConfigured;
+      const transcriptConfigured = !!alphaVantageTranscriptConfigured || !!fmpTranscriptConfigured || !!yahooFinanceNewsConfigured;
+      const transcriptSourceLabel = alphaVantageTranscriptConfigured ? "Alpha 就緒" : fmpTranscriptConfigured ? "FMP 就緒" : yahooFinanceNewsConfigured ? "Yahoo 替代" : "缺少";
+      const transcriptPillLabel = alphaVantageTranscriptConfigured ? "alpha ready" : fmpTranscriptConfigured ? "fmp ready" : yahooFinanceNewsConfigured ? "yahoo ready" : "missing key";
+      const twNewsConfigured = !!finMindNewsConfigured || !!yahooFinanceNewsConfigured;
+      const financialsConfigured = !!finMindFinancialsConfigured || !!yahooFinanceFinancialsConfigured;
+      const twseRealtimeConfigured = providers ? providers.twseRealtimeConfigured : null;
+      const twseEndpointConfigured = providers ? providers.twseEndpointConfigured : null;
+      const twseDisclosureConfigured = providers ? providers.twseDisclosureConfigured : null;
+      const announcementConfigured = !!twseDisclosureConfigured || !!yahooFinanceNewsConfigured;
+      const nextAction = state.settings.mode !== "real"
+        ? "切換真實 API 並測試 /health"
+        : openAiConfigured === false
+          ? "設定 OPENAI_API_KEY 後重啟 backend"
+          : isMockAiSource(aiSource)
+            ? "執行 scripts\\smoke-openai-live.cmd 檢查 OpenAI 真實呼叫"
+          : (s.source || "mock").startsWith("mock")
+            ? "等待行情資料來源可用"
+            : "真實資料來源已就緒";
+      document.getElementById("dataMode").value = state.settings.mode;
+      document.getElementById("apiBaseUrl").value = state.settings.apiBaseUrl;
+      document.getElementById("openAiApiKey").value = state.settings.authToken ? "" : (state.settings.openAiApiKey || "");
+      document.getElementById("geminiApiKey").value = state.settings.authToken ? "" : (state.settings.geminiApiKey || "");
+      document.getElementById("deepSeekApiKey").value = state.settings.authToken ? "" : (state.settings.deepSeekApiKey || "");
+      document.getElementById("mimoApiKey").value = state.settings.authToken ? "" : (state.settings.mimoApiKey || "");
+      document.getElementById("openAiApiKey").placeholder = state.settings.authToken && state.settings.hasStoredOpenAiApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "OpenAI API Key";
+      document.getElementById("geminiApiKey").placeholder = state.settings.authToken && state.settings.hasStoredGeminiApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "Gemini API Key";
+      document.getElementById("deepSeekApiKey").placeholder = state.settings.authToken && state.settings.hasStoredDeepSeekApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "DeepSeek API Key";
+      document.getElementById("mimoApiKey").placeholder = state.settings.authToken && state.settings.hasStoredMimoApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "MIMO API Key";
+      document.getElementById("clearOpenAiKey").textContent = loggedIn && state.settings.hasStoredOpenAiApiKey ? "清除後端 OpenAI Key" : "清除本機 OpenAI Key";
+      document.getElementById("clearGeminiKey").textContent = loggedIn && state.settings.hasStoredGeminiApiKey ? "清除後端 Gemini Key" : "清除本機 Gemini Key";
+      document.getElementById("clearDeepSeekKey").textContent = loggedIn && state.settings.hasStoredDeepSeekApiKey ? "清除後端 DeepSeek Key" : "清除本機 DeepSeek Key";
+      document.getElementById("clearMimoKey").textContent = loggedIn && state.settings.hasStoredMimoApiKey ? "清除後端 MIMO Key" : "清除本機 MIMO Key";
+      document.getElementById("authEmail").value = state.settings.authUserEmail || document.getElementById("authEmail").value;
+      const authStatus = document.getElementById("authStatus");
+      authStatus.textContent = loggedIn ? state.settings.authUserEmail : "訪客";
+      authStatus.className = `status-pill ${loggedIn ? "good" : "warn"}`;
+      document.getElementById("apiStatusRows").innerHTML = rows({
+        "資料模式": modeLabel(state.settings.mode),
+        "API 網址": state.settings.apiBaseUrl,
+        "健康狀態": state.settings.health,
+        "登入帳號": loggedIn ? state.settings.authUserEmail : "訪客",
+        "登入方式": loggedIn ? (state.settings.authProvider || "LOCAL") : "訪客",
+        "OpenAI Key": providerKeyControl("OPENAI", statusPill(loggedIn ? (state.settings.hasStoredOpenAiApiKey ? "已儲存" : state.settings.openAiApiKey ? "本機" : "空白") : (state.settings.openAiApiKey ? "本機" : "空白"), (state.settings.hasStoredOpenAiApiKey || state.settings.openAiApiKey) ? "good" : "warn"), !!(state.settings.hasStoredOpenAiApiKey || state.settings.openAiApiKey)),
+        "Gemini Key": providerKeyControl("GEMINI", statusPill(loggedIn ? (state.settings.hasStoredGeminiApiKey ? "已儲存" : state.settings.geminiApiKey ? "本機" : "空白") : (state.settings.geminiApiKey ? "本機" : "空白"), (state.settings.hasStoredGeminiApiKey || state.settings.geminiApiKey) ? "good" : "warn"), !!(state.settings.hasStoredGeminiApiKey || state.settings.geminiApiKey)),
+        "DeepSeek Key": providerKeyControl("DEEPSEEK", statusPill(loggedIn ? (state.settings.hasStoredDeepSeekApiKey ? "已儲存" : state.settings.deepSeekApiKey ? "本機" : "空白") : (state.settings.deepSeekApiKey ? "本機" : "空白"), (state.settings.hasStoredDeepSeekApiKey || state.settings.deepSeekApiKey) ? "good" : "warn"), !!(state.settings.hasStoredDeepSeekApiKey || state.settings.deepSeekApiKey)),
+        "MIMO Key": providerKeyControl("MIMO", statusPill(loggedIn ? (state.settings.hasStoredMimoApiKey ? "已儲存" : state.settings.mimoApiKey ? "本機" : "空白") : (state.settings.mimoApiKey ? "本機" : "空白"), (state.settings.hasStoredMimoApiKey || state.settings.mimoApiKey) ? "good" : "warn"), !!(state.settings.hasStoredMimoApiKey || state.settings.mimoApiKey)),
+        "偏好 AI": state.settings.preferredProvider || state.provider,
+        "帳號設定更新時間": state.settings.accountSettingsUpdatedAt || "尚未儲存",
+        "最近文件匯入": state.settings.lastDocumentImport || "尚未匯入文件",
+        "行情來源": statusPill(s.source || "mock", (s.source || "mock").startsWith("mock") ? "warn" : "good"),
+        "AI 來源": statusPill(aiSource, isMockAiSource(aiSource) ? "warn" : "good"),
+        "OpenAI 設定": statusPill(openAiConfigured === null ? "unknown" : openAiConfigured ? "ready" : "missing", openAiConfigured === null ? "" : openAiConfigured ? "good" : "bad"),
+        "OpenAI 模型": providers?.openAiModel || "未知",
+        "Gemini 設定": statusPill(geminiConfigured ? "ready" : providers?.geminiConfigured === null || providers?.geminiConfigured === undefined ? "unknown" : "missing", geminiConfigured ? "good" : providers?.geminiConfigured === null || providers?.geminiConfigured === undefined ? "" : "warn"),
+        "Gemini 模型": providers?.geminiModel || "未知",
+        "DeepSeek 設定": statusPill(effectiveDeepSeekConfigured ? "ready" : deepSeekConfigured === null || deepSeekConfigured === undefined ? "unknown" : "missing", effectiveDeepSeekConfigured ? "good" : deepSeekConfigured === null || deepSeekConfigured === undefined ? "" : "warn"),
+        "DeepSeek 模型": providers?.deepSeekModel || "未知",
+        "MIMO 設定": statusPill(effectiveMimoConfigured ? "ready" : mimoConfigured === null || mimoConfigured === undefined ? "unknown" : "missing", effectiveMimoConfigured ? "good" : mimoConfigured === null || mimoConfigured === undefined ? "" : "warn"),
+        "MIMO 模型": providers?.mimoModel || "未知",
+        "FinMind 台股來源": statusPill(finMindConfigured === null || finMindConfigured === undefined ? "unknown" : finMindConfigured ? "ready" : "missing", finMindConfigured === null || finMindConfigured === undefined ? "" : finMindConfigured ? "good" : "warn"),
+        "FinMind Token": sourceKeyControl(
+          "finmind",
+          statusPill(
+            serverFinMindTokenConfigured === null || serverFinMindTokenConfigured === undefined
+              ? state.settings.finMindApiToken ? "local" : "unknown"
+              : finMindTokenConfigured ? (state.settings.finMindApiToken ? "local" : "loaded") : "選填",
+            finMindTokenConfigured ? "good" : "warn"
+          ),
+          !!state.settings.finMindApiToken
+        ),
+        "FinMind 網址": providers?.finMindBaseUrl || "未知",
+        "Yahoo 美股來源": statusPill(yahooFinanceUsConfigured === null || yahooFinanceUsConfigured === undefined ? "unknown" : yahooFinanceUsConfigured ? "ready" : "missing", yahooFinanceUsConfigured === null || yahooFinanceUsConfigured === undefined ? "" : yahooFinanceUsConfigured ? "good" : "warn"),
+        "Yahoo 美股網址": providers?.yahooFinanceUsChartUrl || "未知",
+        "Alpha Vantage Key": sourceKeyControl(
+          "alpha-vantage",
+          statusPill(serverAlphaVantageConfigured === null ? state.settings.alphaVantageApiKey ? "local" : "unknown" : alphaVantageConfigured ? (state.settings.alphaVantageApiKey ? "local" : "ready") : "缺少設定", serverAlphaVantageConfigured === null ? "" : alphaVantageConfigured ? "good" : "warn"),
+          !!state.settings.alphaVantageApiKey
+        ),
+        "FMP Key": sourceKeyControl(
+          "fmp",
+          statusPill(serverFmpConfigured === null || serverFmpConfigured === undefined ? state.settings.fmpApiKey ? "local" : "unknown" : fmpConfigured ? (state.settings.fmpApiKey ? "local" : "ready") : "缺少設定", serverFmpConfigured === null || serverFmpConfigured === undefined ? "" : fmpConfigured ? "good" : "warn"),
+          !!state.settings.fmpApiKey
+        ),
+        "FMP 網址": providers?.fmpBaseUrl || "未知",
+        "美股新聞來源": statusPill(providers ? usNewsPillLabel : "unknown", providers ? usNewsConfigured ? "good" : "warn" : ""),
+        "Yahoo 新聞 RSS": providers?.yahooFinanceNewsRssUrl || "未知",
+        "台股新聞來源": statusPill(providers ? twNewsConfigured ? (finMindNewsConfigured ? "ready" : "yahoo ready") : "missing" : "unknown", providers ? twNewsConfigured ? "good" : "warn" : ""),
+        "財報來源": statusPill(providers ? financialsConfigured ? (finMindFinancialsConfigured ? "ready" : "yahoo ready") : "missing" : "unknown", providers ? financialsConfigured ? "good" : "warn" : ""),
+        "Yahoo 財報網址": providers?.yahooFinanceQuoteSummaryUrl || "未知",
+        "法說會來源": statusPill(providers ? transcriptPillLabel : "unknown", providers ? transcriptConfigured ? "good" : "warn" : ""),
+        "TWSE 即時報價": statusPill(twseRealtimeConfigured === null || twseRealtimeConfigured === undefined ? "unknown" : twseRealtimeConfigured ? "configured" : "missing", twseRealtimeConfigured === null || twseRealtimeConfigured === undefined ? "" : twseRealtimeConfigured ? "good" : "bad"),
+        "TWSE 即時網址": providers?.twseRealtimeUrl || "未知",
+        "TWSE 收盤端點": statusPill(twseEndpointConfigured === null ? "unknown" : twseEndpointConfigured ? "configured" : "missing", twseEndpointConfigured === null ? "" : twseEndpointConfigured ? "good" : "bad"),
+        "台股公告來源": statusPill(providers ? announcementConfigured ? (twseDisclosureConfigured ? "configured" : "yahoo ready") : "missing url" : "unknown", providers ? announcementConfigured ? "good" : "bad" : ""),
+        "下一步": nextAction,
+        "最近資料讀取": state.settings.lastDataLoad || "尚未讀取"
+      });
+      document.getElementById("openAiSmokeHint").innerHTML = buildOpenAiSmokeHint(openAiConfigured, aiSource);
+      document.getElementById("liveChecklistHint").innerHTML = buildLiveChecklistHint(providers);
+      document.getElementById("liveVerificationStatus").textContent = state.settings.lastLiveVerification || "尚未執行 live 驗收。";
+      document.getElementById("docImportStatus").textContent = state.settings.lastDocumentImport || "尚未匯入文件。";
+      document.getElementById("sourceImportStatus").textContent = state.settings.lastSourceImport || "尚未從來源抓取文件。";
+      document.getElementById("sourceImportStatus").textContent += state.settings.providerStatus
+        ? ` 美股新聞=${usNewsSourceLabel} / 台股新聞=${twNewsConfigured ? (finMindNewsConfigured ? "FinMind 就緒" : "Yahoo 就緒") : "缺少"} / 財報=${financialsConfigured ? (finMindFinancialsConfigured ? "FinMind 就緒" : "Yahoo 就緒") : "缺少"} / 法說會=${transcriptSourceLabel} / 台股公告=${announcementConfigured ? (twseDisclosureConfigured ? "TWSE 就緒" : "Yahoo 替代") : "缺少"}`
+        : "";
+    }
+
+    function setDocumentImportStatus(message, failed) {
+      const node = document.getElementById("docImportStatus");
+      node.textContent = message;
+      node.className = failed ? "footer-note failed" : "footer-note up";
+    }
+
+    function setSourceImportStatus(message, failed) {
+      const node = document.getElementById("sourceImportStatus");
+      node.textContent = message;
+      node.className = failed ? "footer-note failed" : "footer-note up";
+    }
+
+    function seedDocumentForm() {
+      const useTaiwan = state.market === "TW";
+      document.getElementById("docMarket").value = state.market;
+      document.getElementById("docSymbol").value = state.symbol;
+      document.getElementById("docType").value = "NEWS";
+      document.getElementById("docTitle").value = useTaiwan ? "台積電先進製程需求續強" : "Apple raises guidance on iPhone demand";
+      document.getElementById("docSource").value = useTaiwan ? "經濟日報" : "Reuters";
+      document.getElementById("docPublishedAt").value = new Date(Date.now() - 3600 * 1000).toISOString().slice(0, 16);
+      document.getElementById("docContent").value = useTaiwan
+        ? "台積電管理層指出先進製程需求維持強勁，AI 相關訂單能見度延續，市場關注下半年資本支出與毛利率變化。"
+        : "Apple said iPhone demand remained resilient and services margin improved, leading investors to focus on guidance, repurchase pace, and short-term demand strength.";
+      document.getElementById("sourceMarket").value = state.market;
+      document.getElementById("sourceSymbol").value = state.symbol;
+      document.getElementById("sourceQuarter").value = latestCompletedQuarter();
+      setDocumentImportStatus("已帶入範例內容，可直接匯入。", false);
+      setSourceImportStatus("已帶入目前股票與預設季度，可直接抓來源。", false);
+    }
+
+    function statusPill(text, tone) {
+      return `<span class="status-pill ${tone || ""}">${statusText(text)}</span>`;
+    }
+
+    function statusText(text) {
+      const value = String(text ?? "");
+      const map = {
+        ready: "就緒",
+        missing: "缺少設定",
+        unknown: "未知",
+        loaded: "已載入",
+        optional: "選填",
+        configured: "已設定",
+        stored: "已儲存",
+        empty: "空白",
+        live: "真實來源",
+        "missing key": "缺少 key",
+        "missing url": "缺少 URL",
+        "alpha ready": "Alpha 就緒",
+        "yahoo ready": "Yahoo RSS 就緒",
+        "ready to verify": "可驗證"
+      };
+      return map[value] || value;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function buildSourceNotice(stockData, analysisSource) {
+      if (state.settings.mode !== "real") return "";
+      const marketLive = !(stockData.source || "mock").startsWith("mock");
+      const aiLive = !isMockAiSource(analysisSource);
+      const action = !marketLive
+        ? "行情尚未使用真實來源，先檢查 /health 與行情來源。"
+        : !aiLive
+          ? "AI 尚未使用真實模型，設定 API key 後重啟後端。"
+          : "真實來源已就緒。";
+      return `
+        <div class="source-notice-head">
+          <strong>真實 API 來源狀態</strong>
+          ${statusPill(action, marketLive && aiLive ? "good" : "warn")}
+        </div>
+        <div class="source-notice-grid">
+          <div class="source-item">
+            <strong>行情來源 ${statusPill(stockData.source || "mock", marketLive ? "good" : "warn")}</strong>
+            <p>${marketLive ? "目前使用外部行情資料來源。" : "目前使用模擬回落資料，通常是外部來源無回應或端點不可用。"}</p>
+          </div>
+          <div class="source-item">
+            <strong>AI 來源 ${statusPill(analysisSource, aiLive ? "good" : "warn")}</strong>
+            <p>${aiSourceMessage(analysisSource)}</p>
+          </div>
+        </div>
+      `;
+    }
+
+    function buildOpenAiSmokeHint(openAiConfigured, aiSource) {
+      const title = openAiConfigured === false
+        ? "OpenAI 真實呼叫驗證前置條件未完成"
+        : isMockAiSource(aiSource)
+          ? "OpenAI 真實呼叫可驗證"
+          : "OpenAI 真實呼叫已就緒";
+      const status = openAiConfigured === false
+        ? statusPill("missing key", "bad")
+        : isMockAiSource(aiSource)
+          ? statusPill("ready to verify", "warn")
+          : statusPill("live", "good");
+      const body = openAiConfigured === false
+        ? "1. copy local-env.example.cmd local-env.cmd  2. 在 local-env.cmd 填入 OPENAI_API_KEY  3. 重啟 backend"
+        : isMockAiSource(aiSource)
+          ? "下一步直接跑 scripts\\smoke-openai-live.cmd，確認 ai/chat 與 ai/analysis 都回 openai-responses。"
+          : "目前畫面已不是 mock-ai；仍可跑 scripts\\smoke-openai-live.cmd 做一次端到端確認。";
+      return `<strong>${title}</strong> ${status}<br><code>${body}</code>`;
+    }
+
+    function buildLiveChecklistHint(providers) {
+      if (!providers) {
+        return `<strong>真實來源檢查清單</strong><br><code>先按「測試 /health」讀取資料來源狀態。</code>`;
+      }
+      const steps = [];
+      if (!providers.openAiConfigured) {
+        steps.push("填入 OPENAI_API_KEY，重啟 backend，然後跑 scripts\\smoke-openai-live.cmd");
+      }
+      const alphaReady = providers.alphaVantageNewsConfigured || !!state.settings.alphaVantageApiKey;
+      const fmpReady = providers.fmpNewsConfigured || !!state.settings.fmpApiKey;
+      const finMindNewsReady = providers.finMindNewsConfigured || !!state.settings.finMindApiToken;
+      const finMindFinancialsReady = providers.finMindFinancialsConfigured || !!state.settings.finMindApiToken;
+      if (!alphaReady && !fmpReady && !providers.yahooFinanceNewsConfigured) {
+        steps.push("填入 ALPHAVANTAGE_API_KEY 或 FMP_API_KEY，或確認 Yahoo RSS 可用，然後驗證美股新聞來源");
+      }
+      if (!(providers.alphaVantageTranscriptConfigured || !!state.settings.alphaVantageApiKey) && !(providers.fmpTranscriptConfigured || !!state.settings.fmpApiKey)) {
+        if (!providers.yahooFinanceNewsConfigured) {
+          steps.push("填入 ALPHAVANTAGE_API_KEY 或 FMP_API_KEY，或確認 Yahoo RSS 可用，然後驗證法說會替代來源");
+        }
+      }
+      if (!finMindNewsReady && !providers.yahooFinanceNewsConfigured) {
+        steps.push("確認 stockai.finmind.base-url 或 Yahoo RSS 可用，然後驗證台股新聞來源");
+      }
+      if (!finMindFinancialsReady && !providers.yahooFinanceFinancialsConfigured) {
+        steps.push("確認 FinMind 或 Yahoo quoteSummary 可用，然後驗證財報來源");
+      }
+      if (!providers.twseDisclosureConfigured && !providers.yahooFinanceNewsConfigured) {
+        steps.push("填入 STOCKAI_TWSE_DISCLOSURE_URL 或確認 Yahoo RSS 可用，然後驗證台股公告替代來源");
+      }
+      if (!steps.length) {
+        return `<strong>真實來源檢查清單</strong> ${statusPill("ready", "good")}<br><code>目前真實來源設定已到位，下一步直接跑驗收腳本做端到端驗證。</code>`;
+      }
+      return `<strong>真實來源檢查清單</strong> ${statusPill(`${steps.length} 項`, "warn")}<br><code>${steps.map((step, index) => `${index + 1}. ${step}`).join("  ")}</code>`;
+    }
+
+    function setTab(id, options = {}) {
+      const labels = {
+        dashboard: "總覽",
+        analysis: "個股分析",
+        compare: "模型比較",
+        watchlist: "自選股",
+        chat: "AI 問答",
+        backtest: "策略回測",
+        settings: "設定"
+      };
+      const panel = document.getElementById(id);
+      if (!panel) return;
+      document.querySelectorAll("[data-tab]").forEach(button => {
+        const active = button.dataset.tab === id;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      document.querySelectorAll(".tab-panel").forEach(item => item.classList.toggle("active", item.id === id));
+      if (options.announce !== false) showInteractionToast(`已切換到 ${labels[id] || id}`);
+      if (options.focusPanel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function refreshSymbols() {
+      const localOptions = Object.keys(stocks[state.market]).map(s => ({ value: s, label: stocks[state.market][s].name || s }));
+      const realOptions = state.settings.mode === "real"
+        ? (state.realSearch.results || []).map(item => ({
+          value: item.symbol,
+          label: `${item.name} · ${item.market} · ${item.source}`
+        }))
+        : [];
+      const seen = new Set();
+      document.getElementById("symbols").innerHTML = [...realOptions, ...localOptions]
+        .filter(item => {
+          if (seen.has(item.value)) return false;
+          seen.add(item.value);
+          return true;
+        })
+        .map(item => `<option value="${escapeHtml(item.value)}" label="${escapeHtml(item.label)}"></option>`)
+        .join("");
+    }
+
+    document.addEventListener("click", e => {
+      const tab = e.target.closest("[data-tab]")?.dataset.tab;
+      const provider = e.target.closest("[data-provider]")?.dataset.provider;
+      const pick = e.target.closest("[data-pick]")?.dataset.pick;
+      const question = e.target.closest("[data-question]")?.dataset.question;
+      const fail = e.target.closest("[data-fail]")?.dataset.fail;
+      const clearFail = e.target.closest("[data-clear-fail]")?.dataset.clearFail;
+      const removeWatchKey = e.target.closest("[data-remove-watch]")?.dataset.removeWatch;
+      if (tab) setTab(tab, { focusPanel: e.target.closest(".mobile-dock") !== null });
+      if (provider) { state.provider = provider; document.getElementById("provider").value = provider; refreshRealAnalysis(); }
+      if (pick) { const [market, symbol] = pick.split(":"); state.market = market; state.symbol = symbol; document.getElementById("market").value = market; document.getElementById("symbolSearch").value = symbol; refreshSymbols(); render(); }
+      if (question) askChat(question);
+      if (fail && !state.failedProviders.includes(fail)) { state.failedProviders.push(fail); render(); }
+      if (clearFail) { state.failedProviders = []; render(); }
+      if (removeWatchKey) removeWatch(removeWatchKey);
+    });
+
+    document.getElementById("market").addEventListener("change", e => {
+      state.market = e.target.value;
+      state.symbol = Object.keys(stocks[state.market])[0];
+      state.realSearch.results = [];
+      state.realSearch.query = "";
+      document.getElementById("symbolSearch").value = state.symbol;
+      refreshSymbols();
+      render();
+    });
+    document.getElementById("provider").addEventListener("change", e => { state.provider = e.target.value; refreshRealAnalysis(); });
+    document.getElementById("loadStock").addEventListener("click", async () => {
+      const loadButton = document.getElementById("loadStock");
+      if (loadButton.disabled) return;
+      setBusy(loadButton, true, "讀取中...");
+      const query = document.getElementById("symbolSearch").value;
+      let target = null;
+      let found = false;
+      let autoRealLookup = false;
+      let loadedMarketForSources = null;
+      let loadedSymbolForSources = null;
+      try {
+        const localTarget = resolveSearchTarget(query);
+        autoRealLookup = state.settings.mode !== "real" && !localTarget.found && query.trim();
+        if ((state.settings.mode === "real" || autoRealLookup) && query.trim()) {
+          state.realSearch.query = query.trim();
+          state.realSearch.results = await searchRealStocks(query, autoRealLookup);
+          refreshSymbols();
+        }
+        target = resolveCachedRealSearchTarget(query) || localTarget;
+        found = target.found;
+        if (autoRealLookup) {
+          state.settings.mode = "real";
+          document.getElementById("dataMode").value = "real";
+          saveSettings();
+        }
+        const generatedMock = !found && state.settings.mode !== "real";
+        state.market = target.market;
+        if (generatedMock) ensureLocalStock(state.market, target.symbol);
+        state.symbol = (found || state.settings.mode === "real" || generatedMock) ? target.symbol : Object.keys(stocks[state.market])[0];
+        document.getElementById("market").value = state.market;
+        refreshSymbols();
+        document.getElementById("symbolSearch").value = state.symbol;
+        if (state.settings.mode === "real") {
+          state.realStock = await loadRealStock(state.symbol);
+          const realAi = await loadRealAi(state.symbol);
+          state.realAi = realAi;
+          state.realEvidence = realAi.analysis?.evidence || await loadRealEvidence(state.symbol);
+          state.settings.lastDataLoad = `OK ${state.symbol}`;
+          setWatchFeedback(`${autoRealLookup ? "已自動切到真實 API 並載入 " : target.switchedMarket ? `已切換到 ${marketLabel(state.market)} 並載入 ` : "已載入 "}${state.symbol}，可直接加入自選。`);
+          saveSettings();
+        } else {
+          state.realStock = null;
+          state.realAi = null;
+          state.realEvidence = [];
+          setWatchFeedback(
+            found
+              ? `${target.switchedMarket ? `已切換到 ${marketLabel(state.market)} 並載入 ` : "已切換到 "}${state.symbol}`
+              : `已建立 ${state.symbol} 的 mock 資料，可直接分析或加入自選`
+          );
+        }
+        loadedMarketForSources = state.market;
+        loadedSymbolForSources = state.symbol;
+      } catch (error) {
+        state.realStock = null;
+        state.realAi = null;
+        state.realEvidence = [];
+        state.settings.lastDataLoad = `失敗：${error.message}`;
+        if (target) {
+          state.market = target.market;
+          state.symbol = target.symbol;
+          state.realStock = ensureLocalStock(state.market, state.symbol);
+          if (autoRealLookup) {
+            state.settings.mode = "mock";
+            document.getElementById("dataMode").value = "mock";
+          }
+          document.getElementById("market").value = state.market;
+          document.getElementById("symbolSearch").value = state.symbol;
+          setWatchFeedback(`真實來源目前沒有 ${state.symbol} 可用資料，已載入模擬回落資料：${error.message}`);
+          loadedMarketForSources = state.market;
+          loadedSymbolForSources = state.symbol;
+        } else {
+          setWatchFeedback(`真實 API 失敗，已保留模擬資料流程：${error.message}`);
+        }
+        saveSettings();
+      } finally {
+        setBusy(loadButton, false);
+        render();
+      }
+      if (query.trim() && loadedMarketForSources && loadedSymbolForSources) {
+        autoFetchLatestSources(loadedMarketForSources, loadedSymbolForSources).catch(error => {
+          const message = `自動來源抓取失敗：${error.message}`;
+          state.settings.lastSourceImport = message;
+          saveSettings();
+          setSourceImportStatus(message, true);
+        });
+      }
+      if (!found && target && !autoRealLookup && state.settings.mode !== "real") alert(`找不到 ${target.symbol} 的既有樣本，已建立 mock 資料並載入 ${state.symbol}。`);
+    });
+    document.getElementById("addWatch").addEventListener("click", async () => {
+      const key = `${state.market}:${state.symbol}`;
+      if (state.watch.includes(key)) {
+        setWatchFeedback(`${state.symbol} 已在自選清單。`);
+        return renderWatch();
+      }
+      state.watch.push(key);
+      saveWatch();
+      setWatchFeedback(`已加入自選 ${state.symbol}`);
+      if (state.settings.mode === "real") {
+        try {
+          await apiPost("/watchlist", { market: state.market, symbol: state.symbol });
+          state.settings.lastDataLoad = `自選股已同步 ${state.symbol}`;
+        } catch (error) {
+          state.settings.lastDataLoad = `自選股同步失敗：${error.message}`;
+        }
+        saveSettings();
+        renderSettings();
+      }
+      renderWatch();
+    });
+    document.getElementById("symbolSearch").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("loadStock").click();
+    });
+    document.addEventListener("keydown", e => {
+      const target = e.target;
+      const isTyping = target instanceof HTMLElement && (
+        target.matches("input, textarea, select") || target.isContentEditable
+      );
+      if (isTyping || e.ctrlKey || e.metaKey || e.altKey) return;
+      const shortcutTabs = {
+        g: "dashboard",
+        a: "analysis",
+        c: "chat",
+        b: "backtest",
+        s: "settings",
+        w: "watchlist"
+      };
+      if (e.key === "/") {
+        e.preventDefault();
+        document.getElementById("symbolSearch").focus();
+        showInteractionToast("已聚焦股票搜尋");
+        return;
+      }
+      const tab = shortcutTabs[e.key.toLowerCase()];
+      if (tab) {
+        e.preventDefault();
+        setTab(tab, { focusPanel: true });
+      }
+    });
+    document.getElementById("symbolSearch").addEventListener("input", () => {
+      if (state.realSearch.timer) clearTimeout(state.realSearch.timer);
+      state.realSearch.timer = setTimeout(refreshRealSearchSuggestions, 350);
+    });
+    document.getElementById("runBacktest").addEventListener("click", runBacktest);
+    document.getElementById("importDocument").addEventListener("click", importDocument);
+    document.getElementById("fetchNews").addEventListener("click", () => fetchSourceDocuments("news"));
+    document.getElementById("fetchFinancials").addEventListener("click", () => fetchSourceDocuments("financials"));
+    document.getElementById("fetchAnnouncements").addEventListener("click", () => fetchSourceDocuments("announcements"));
+    document.getElementById("fetchTranscript").addEventListener("click", () => fetchSourceDocuments("transcript"));
+    document.getElementById("seedDocument").addEventListener("click", seedDocumentForm);
+    document.getElementById("useCurrentSymbol").addEventListener("click", () => {
+      document.getElementById("docMarket").value = state.market;
+      document.getElementById("docSymbol").value = state.symbol;
+      setDocumentImportStatus(`已帶入目前股票 ${state.symbol}。`, false);
+    });
+    document.getElementById("useCurrentSource").addEventListener("click", () => {
+      document.getElementById("sourceMarket").value = state.market;
+      document.getElementById("sourceSymbol").value = state.symbol;
+      if (!document.getElementById("sourceQuarter").value) {
+        document.getElementById("sourceQuarter").value = latestCompletedQuarter();
+      }
+      setSourceImportStatus(`已帶入目前股票 ${state.symbol}。`, false);
+    });
+    document.getElementById("saveSettings").addEventListener("click", saveUiSettings);
+    document.getElementById("saveApiKeys").addEventListener("click", saveUiSettings);
+    document.getElementById("openAiApiKey").addEventListener("input", previewApiKeyInput);
+    document.getElementById("geminiApiKey").addEventListener("input", previewApiKeyInput);
+    document.getElementById("deepSeekApiKey").addEventListener("input", previewApiKeyInput);
+    document.getElementById("mimoApiKey").addEventListener("input", previewApiKeyInput);
+    document.getElementById("openAiApiKey").addEventListener("keydown", e => {
+      if (e.key === "Enter") saveUiSettings();
+    });
+    document.getElementById("geminiApiKey").addEventListener("keydown", e => {
+      if (e.key === "Enter") saveUiSettings();
+    });
+    document.getElementById("deepSeekApiKey").addEventListener("keydown", e => {
+      if (e.key === "Enter") saveUiSettings();
+    });
+    document.getElementById("mimoApiKey").addEventListener("keydown", e => {
+      if (e.key === "Enter") saveUiSettings();
+    });
+    document.getElementById("registerAuth").addEventListener("click", () => submitAuth("/auth/register"));
+    document.getElementById("loginAuth").addEventListener("click", () => submitAuth("/auth/login"));
+    document.getElementById("logoutAuth").addEventListener("click", logoutAuth);
+    document.getElementById("refreshAuth").addEventListener("click", refreshAuthMe);
+    document.getElementById("clearOpenAiKey").addEventListener("click", () => clearProviderKey("OPENAI"));
+    document.getElementById("clearGeminiKey").addEventListener("click", () => clearProviderKey("GEMINI"));
+    document.getElementById("clearDeepSeekKey").addEventListener("click", () => clearProviderKey("DEEPSEEK"));
+    document.getElementById("clearMimoKey").addEventListener("click", () => clearProviderKey("MIMO"));
+    document.getElementById("keyEntrySave").addEventListener("click", () => {
+      closeKeyEntryModal(document.getElementById("keyEntryInput").value);
+    });
+    document.getElementById("keyEntryCancel").addEventListener("click", () => closeKeyEntryModal(null));
+    document.getElementById("keyEntryInput").addEventListener("keydown", e => {
+      if (e.key === "Enter") closeKeyEntryModal(e.target.value);
+      if (e.key === "Escape") closeKeyEntryModal(null);
+    });
+    document.getElementById("keyEntryModal").addEventListener("click", e => {
+      if (e.target.id === "keyEntryModal") closeKeyEntryModal(null);
+    });
+    document.addEventListener("click", event => {
+      const providerKeyButton = event.target.closest("[data-provider-key]");
+      if (providerKeyButton) {
+        editProviderKey(providerKeyButton.dataset.providerKey);
+        return;
+      }
+      const clearProviderKeyButton = event.target.closest("[data-clear-provider-key]");
+      if (clearProviderKeyButton) {
+        clearProviderKey(clearProviderKeyButton.dataset.clearProviderKey);
+        return;
+      }
+      const sourceKeyButton = event.target.closest("[data-source-key]");
+      if (sourceKeyButton) {
+        editSourceKey(sourceKeyButton.dataset.sourceKey);
+        return;
+      }
+      const clearSourceKeyButton = event.target.closest("[data-clear-source-key]");
+      if (clearSourceKeyButton) {
+        clearSourceKey(clearSourceKeyButton.dataset.clearSourceKey);
+      }
+    });
+    document.getElementById("refreshLiveReadiness").addEventListener("click", async () => {
+      const button = document.getElementById("refreshLiveReadiness");
+      setBusy(button, true, "刷新中...");
+      try {
+        await refreshHealthStatus(document.getElementById("apiBaseUrl").value);
+        setLiveVerificationStatus("已刷新真實來源狀態。", false);
+      } catch (error) {
+        state.settings.health = `連線失敗：${error.message}`;
+        state.settings.providerStatus = null;
+        saveSettings();
+        setLiveVerificationStatus(`刷新真實來源狀態失敗：${error.message}`, true);
+      } finally {
+        setBusy(button, false);
+        renderSettings();
+      }
+    });
+    document.getElementById("verifyOpenAiLive").addEventListener("click", verifyOpenAiLiveFlow);
+    document.getElementById("verifySourceLive").addEventListener("click", verifySourceFetchLiveFlow);
+    document.getElementById("testHealth").addEventListener("click", async () => {
+      const baseUrl = document.getElementById("apiBaseUrl").value.replace(/\/+$/, "");
+      state.settings.health = "測試中...";
+      renderSettings();
+      try {
+        await refreshHealthStatus(baseUrl);
+      } catch (error) {
+        state.settings.health = `連線失敗：${error.message}`;
+        state.settings.providerStatus = null;
+      }
+      renderSettings();
+    });
+
+    refreshSymbols();
+    document.getElementById("symbolSearch").value = state.symbol;
+    applyProviderFromAuth();
+    render();
+    setTab(document.querySelector(".tab-panel.active")?.id || "dashboard", { announce: false });
+    if (state.settings.authToken) {
+      refreshAuthMe().catch(() => {});
+    }
+    document.getElementById("runBacktest").click();
+  </script>
+</body>
+</html>

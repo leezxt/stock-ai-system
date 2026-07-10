@@ -1,0 +1,54 @@
+package com.example.stockai.stock;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+
+import com.example.stockai.rag.DocumentRetrieveRequest;
+import com.example.stockai.rag.DocumentRetriever;
+
+@Service
+class RagContextService {
+    private final StockService stockService;
+    private final DocumentRetriever documentRetriever;
+
+    RagContextService(StockService stockService, DocumentRetriever documentRetriever) {
+        this.stockService = stockService;
+        this.documentRetriever = documentRetriever;
+    }
+
+    RagContext buildAnalysisContext(StockRecord stock, Integer horizonDays) {
+        return build(stock, horizonOrDefault(horizonDays), stock.symbol() + " technical outlook earnings guidance risk");
+    }
+
+    RagContext buildChatContext(StockRecord stock, Integer horizonDays, String message) {
+        return build(stock, horizonOrDefault(horizonDays), stock.symbol() + " " + message);
+    }
+
+    private RagContext build(StockRecord stock, int horizonDays, String queryText) {
+        return new RagContext(
+            stock,
+            stockService.technicalSummary(stock.market(), stock.symbol()),
+            stockService.prediction(stock.market(), stock.symbol(), horizonDays),
+            retrieveEvidence(stock, queryText)
+        );
+    }
+
+    private List<com.example.stockai.rag.RetrievedDocument> retrieveEvidence(StockRecord stock, String queryText) {
+        return documentRetriever.retrieve(new DocumentRetrieveRequest(
+            queryText,
+            3,
+            stock.symbol(),
+            stock.market(),
+            null,
+            Instant.now().minus(365, ChronoUnit.DAYS),
+            Instant.now()
+        ));
+    }
+
+    private static int horizonOrDefault(Integer horizonDays) {
+        return horizonDays == null || horizonDays <= 0 ? 5 : horizonDays;
+    }
+}

@@ -1,0 +1,3 @@
+@echo off
+setlocal
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$pids = @(); try { $pids = @(Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction Stop | Select-Object -ExpandProperty OwningProcess -Unique) } catch { $pids = @(netstat -ano | Select-String ':8080\s+.*LISTENING' | ForEach-Object { ($_ -split '\s+')[-1] } | Sort-Object -Unique) }; if (-not $pids -or $pids.Count -eq 0) { Write-Host 'No backend listening on 8080.'; exit 0 }; foreach ($procId in $pids) { try { Stop-Process -Id $procId -Force -ErrorAction Stop; Write-Host ('Stopped PID ' + $procId) } catch { Write-Host ('Failed to stop PID ' + $procId + ': ' + $_.Exception.Message) } }"
