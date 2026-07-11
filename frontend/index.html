@@ -1422,9 +1422,18 @@
     }
 
     async function refreshHealthStatus(baseUrlOverride) {
-      const baseUrl = (baseUrlOverride || state.settings.apiBaseUrl || "").replace(/\/+$/, "");
-      const response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
-      const body = await readJsonResponse(response, "/health");
+      let baseUrl = (baseUrlOverride || state.settings.apiBaseUrl || "/api/v1").trim().replace(/\/+$/, "");
+      if (!baseUrl || baseUrl === "/") baseUrl = "/api/v1";
+      let response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
+      let body;
+      try {
+        body = await readJsonResponse(response, `${baseUrl}/health`);
+      } catch (error) {
+        if (location.protocol === "file:" || baseUrl === "/api/v1") throw error;
+        baseUrl = "/api/v1";
+        response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
+        body = await readJsonResponse(response, `${baseUrl}/health`);
+      }
       state.settings.health = response.ok ? `OK ${response.status}` : `HTTP ${response.status}`;
       state.settings.providerStatus = body.providers || body.data?.providers || null;
       state.settings.apiBaseUrl = baseUrl;
