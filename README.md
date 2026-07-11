@@ -171,6 +171,8 @@ mvn test
 - `DELETE /api/v1/watchlist/{market}/{symbol}`
 - `POST /api/v1/backtests`
 
+AI 問答可處理目前股票以外的一般問題。當問題包含指數、價格、走勢、數值、漲跌、報酬、比較或圖表意圖時，`/ai/chat` 會額外回傳 `chart`（`type`、`title`、`labels`、`values`、`unit`）；前端使用可靠的目前標的價格序列繪製 SVG 折線圖，不使用 AI 自行生成的數字。
+
 啟動 Spring Boot backend:
 
 ```powershell

@@ -113,7 +113,9 @@ record RagContext(
 
     String chatPrompt(String message) {
         return analysisPrompt() + System.lineSeparator()
-            + "使用者問題: " + message;
+            + "問答規則: 使用者可以詢問目前股票或其他一般問題。若問題與股票無關，直接回答一般知識，"
+            + "不要硬套用股票資料；若涉及即時數值但上下文沒有可靠資料，必須清楚說明資料限制，不得編造。"
+            + System.lineSeparator() + "使用者問題: " + message;
     }
 
     private String evidenceBlock() {

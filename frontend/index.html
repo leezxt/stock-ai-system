@@ -469,6 +469,11 @@
       background: linear-gradient(135deg, rgba(95, 243, 210, .24), rgba(255, 200, 87, .12));
       color: #f4fffb;
     }
+    .chat-chart { margin-top: 12px; padding: 14px; border: 1px solid #28445f; border-radius: 12px; background: #091521; }
+    .chat-chart.hidden { display: none; }
+    .chat-chart h3 { margin: 0 0 8px; font-size: 15px; }
+    .chat-chart svg { width: 100%; height: 220px; display: block; }
+    .chat-chart .axis-label { fill: #8fa8bd; font-size: 11px; }
     .interaction-toast {
       position: fixed;
       right: 22px;
@@ -929,9 +934,11 @@
             <button data-question="這檔股票未來 5 日風險在哪？">未來 5 日風險</button>
             <button data-question="目前技術面偏多還是偏空？">技術面方向</button>
             <button data-question="不同模型分歧的原因是什麼？">模型分歧原因</button>
+            <button data-question="請顯示最近價格走勢圖表">價格走勢圖</button>
           </div>
           <input id="chatInput" placeholder="輸入問題，例如：如果跌破 MA20 代表什麼？" />
           <div class="card" style="margin-top:12px;background:#0c1827" id="chatAnswer"></div>
+          <div id="chatChart" class="chat-chart hidden" aria-live="polite"></div>
           <div class="evidence-block">
             <h3>AI 問答參考證據</h3>
             <div id="chatEvidence" class="muted">尚未載入檢索證據。</div>
@@ -1379,11 +1386,24 @@
       }
     }
 
+    async function httpError(response, path) {
+      let detail = "";
+      try {
+        const body = await readJsonResponse(response, path);
+        detail = body?.detail || body?.message || body?.error || "";
+      } catch {
+        // Keep the status-only fallback when the error body is not JSON.
+      }
+      const error = new Error(`HTTP ${response.status} ${path}${detail ? `：${detail}` : ""}`);
+      error.status = response.status;
+      return error;
+    }
+
     async function apiGet(path) {
       const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
+      if (!response.ok) throw await httpError(response, path);
       return unwrap(await readJsonResponse(response, path));
     }
 
@@ -1404,7 +1424,7 @@
       }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
+      if (!response.ok) throw await httpError(response, path);
       return unwrap(await readJsonResponse(response, path));
     }
 
@@ -1417,7 +1437,7 @@
       }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
+      if (!response.ok) throw await httpError(response, path);
       return unwrap(await readJsonResponse(response, path));
     }
 
@@ -1706,6 +1726,14 @@
         setAuthMessage("請輸入 email 與密碼。", true);
         return;
       }
+      if (!email.includes("@")) {
+        setAuthMessage("Email 格式不正確，必須包含 @。", true);
+        return;
+      }
+      if (path.includes("register") && (password.length < 12 || password.length > 200)) {
+        setAuthMessage("註冊密碼必須為 12–200 個字元。", true);
+        return;
+      }
       const actionButton = path.includes("register") ? document.getElementById("registerAuth") : document.getElementById("loginAuth");
       setBusy(actionButton, true, path.includes("register") ? "註冊中..." : "登入中...");
       try {
@@ -1716,7 +1744,15 @@
         setAuthMessage(`${path.includes("register") ? "註冊" : "登入"}成功：${result.user.email}`, false);
         renderSettings();
       } catch (error) {
-        setAuthMessage(`${path.includes("register") ? "註冊" : "登入"}失敗：${error.message}`, true);
+        if (!path.includes("register") && error.status === 401) {
+          setAuthMessage("登入失敗：Email 或密碼不正確。若尚未建立帳號，請先按註冊；Google 建立的帳號不能在此使用密碼登入。", true);
+        } else if (path.includes("register") && error.status === 409) {
+          setAuthMessage("註冊失敗：此 Email 已存在，請改用登入。", true);
+        } else if (path.includes("register") && error.status === 400) {
+          setAuthMessage("註冊失敗：請確認 Email 格式正確，且密碼為 12–200 個字元。", true);
+        } else {
+          setAuthMessage(`${path.includes("register") ? "註冊" : "登入"}失敗：${error.message}`, true);
+        }
       } finally {
         setBusy(actionButton, false);
       }
@@ -2562,6 +2598,7 @@
       renderSettings();
       drawChart(s);
       document.getElementById("chatAnswer").textContent = `目前 ${s.symbol} 的 5 日 ${analysisSource} 上漲機率為 ${Math.round(s.prediction.upProbability * 100)}%，主要要看 MA20 是否失守與波動是否擴大。`;
+      renderChatChart(null);
       document.getElementById("chatEvidence").innerHTML = renderEvidence(evidence, {
         empty: state.settings.mode === "real"
           ? "目前沒有 AI 問答可引用的文件證據。可先匯入新聞或公告後再提問。"
@@ -2763,6 +2800,48 @@
       document.querySelectorAll("[data-question]").forEach(button => button.disabled = busy);
       document.getElementById("chatInput").disabled = busy;
       if (busy) document.getElementById("chatAnswer").textContent = "AI 回覆產生中...";
+      if (busy) document.getElementById("chatChart").classList.add("hidden");
+    }
+
+    function renderChatChart(chart) {
+      const container = document.getElementById("chatChart");
+      const values = Array.isArray(chart?.values) ? chart.values.map(Number).filter(Number.isFinite) : [];
+      if (!chart || values.length < 2) {
+        container.classList.add("hidden");
+        container.innerHTML = "";
+        return;
+      }
+      const width = 700;
+      const height = 210;
+      const padding = 36;
+      const minimum = Math.min(...values);
+      const maximum = Math.max(...values);
+      const range = maximum - minimum || 1;
+      const points = values.map((value, index) => {
+        const x = padding + index * ((width - padding * 2) / Math.max(1, values.length - 1));
+        const y = height - padding - ((value - minimum) / range) * (height - padding * 2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      const title = escapeHtml(chart.title || "數值走勢");
+      const unit = escapeHtml(chart.unit || "");
+      container.innerHTML = `
+        <h3>${title}</h3>
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">
+          <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#35516b" />
+          <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#35516b" />
+          <polyline points="${points}" fill="none" stroke="#5ff3d2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+          <text class="axis-label" x="${padding}" y="20">${maximum.toFixed(2)} ${unit}</text>
+          <text class="axis-label" x="${padding}" y="${height - 10}">${minimum.toFixed(2)} ${unit}</text>
+        </svg>`;
+      container.classList.remove("hidden");
+    }
+
+    function localChartForQuestion(stock, message) {
+      const requested = /指數|價格|走勢|數值|漲跌|報酬|比較|圖表|chart|trend/i.test(message || "");
+      const values = Array.isArray(stock?.prices) ? stock.prices.slice(-30) : [];
+      return requested && values.length > 1
+        ? { type: "line", title: `${stock.symbol} 最近價格走勢`, values, unit: stock.currency || "" }
+        : null;
     }
     function divergence(results) {
       if (results.length < 2) return "UNKNOWN";
@@ -2802,16 +2881,19 @@
           state.realEvidence = evidence;
           const source = data.source || "openai-responses";
           document.getElementById("chatAnswer").textContent = `[${source}] ${data.message || data.answer || ""}`;
+          renderChatChart(data.chart);
           document.getElementById("chatEvidence").innerHTML = renderEvidence(evidence);
           return;
         }
         document.getElementById("chatAnswer").textContent = `[mock-ai] 根據目前模擬資料：${message} 重點是價格是否守住 MA20、模型分歧是否擴大，以及是否有重大新聞或財報事件。`;
+        renderChatChart(localChartForQuestion(s, message));
         document.getElementById("chatEvidence").innerHTML = renderEvidence([]);
       } catch (error) {
           state.settings.lastDataLoad = `AI 問答失敗：${error.message}`;
           saveSettings();
           renderSettings();
           document.getElementById("chatAnswer").textContent = `[mock-ai] 根據目前模擬資料：${message} 重點是價格是否守住 MA20、模型分歧是否擴大，以及是否有重大新聞或財報事件。`;
+          renderChatChart(localChartForQuestion(s, message));
           document.getElementById("chatEvidence").innerHTML = renderEvidence(state.realEvidence || []);
       } finally {
         setChatBusy(false);
