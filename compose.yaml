@@ -7,7 +7,8 @@ services:
       POSTGRES_USER: stock_ai
       POSTGRES_PASSWORD: ${STOCKAI_DATABASE_PASSWORD:-stock_ai}
     ports:
-      - "${STOCK_AI_POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${STOCK_AI_POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
     volumes:
       - stock_ai_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -25,7 +26,8 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${STOCK_AI_HOST_PORT:-18080}:8080"
+      - "0.0.0.0:${STOCK_AI_HOST_PORT:-18080}:8080"
+    restart: unless-stopped
     environment:
       STOCKAI_DATABASE_URL: jdbc:postgresql://postgres:5432/stock_ai
       STOCKAI_DATABASE_USERNAME: stock_ai
@@ -45,6 +47,9 @@ services:
       FMP_API_KEY: ${FMP_API_KEY:-}
       STOCKAI_TWSE_DISCLOSURE_URL: ${STOCKAI_TWSE_DISCLOSURE_URL:-}
       STOCKAI_AUTH_SECRET: ${STOCKAI_AUTH_SECRET:-}
+      STOCKAI_SECRETS_ENCRYPTION_KEY: ${STOCKAI_SECRETS_ENCRYPTION_KEY:-}
+      STOCKAI_CORS_ALLOWED_ORIGINS: ${STOCKAI_CORS_ALLOWED_ORIGINS:-http://localhost:18080,http://127.0.0.1:18080}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     volumes:
       - stock_ai_data:/app/backend/data
 
