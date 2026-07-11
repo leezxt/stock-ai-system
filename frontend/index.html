@@ -1271,7 +1271,10 @@
       const params = new URLSearchParams(location.search);
       try {
         const settings = { ...defaultSettings(), ...(JSON.parse(localStorage.getItem("stockAiSettings")) || {}) };
-        if (!["localhost", "127.0.0.1"].includes(location.hostname) && /^https?:\/\/localhost(?::\d+)?/i.test(settings.apiBaseUrl || "")) {
+        if (location.protocol !== "file:" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/api\/v1$/i.test(settings.apiBaseUrl || "")) {
+          settings.apiBaseUrl = "/api/v1";
+        }
+        if (location.protocol !== "file:" && !["localhost", "127.0.0.1"].includes(location.hostname) && /^https?:\/\/localhost(?::\d+)?/i.test(settings.apiBaseUrl || "")) {
           settings.apiBaseUrl = "/api/v1";
         }
         if (params.get("mode")) settings.mode = params.get("mode");
@@ -1288,7 +1291,7 @@
     function defaultSettings() {
       return {
         mode: "real",
-        apiBaseUrl: location.protocol === "file:" ? "http://localhost:8080/api/v1" : "/api/v1",
+        apiBaseUrl: location.protocol === "file:" ? "http://localhost:18080/api/v1" : "/api/v1",
         health: "未測試",
         lastDocumentImport: "尚未匯入文件",
         lastSourceImport: "尚未從來源抓取文件",
@@ -1362,12 +1365,25 @@
       return message;
     }
 
+    async function readJsonResponse(response, path) {
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        const isHtml = /^\s*<!doctype\s+html|^\s*<html/i.test(text);
+        if (isHtml) {
+          throw new Error(`API 回傳 HTML（${path}）。請從 http://localhost:18080/app 開啟網站，不要直接開啟 frontend/index.html。`);
+        }
+        throw new Error(`API 回傳的內容不是有效 JSON（${path}，HTTP ${response.status}）。`);
+      }
+    }
+
     async function apiGet(path) {
       const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
       if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
-      return unwrap(await response.json());
+      return unwrap(await readJsonResponse(response, path));
     }
 
     async function apiGetOptional(path) {
@@ -1375,7 +1391,7 @@
         throw new Error(explainFetchFailure(error, path));
       });
       if (!response.ok) return null;
-      return unwrap(await response.json());
+      return unwrap(await readJsonResponse(response, path));
     }
 
     async function apiPost(path, body) {
@@ -1388,7 +1404,7 @@
         throw new Error(explainFetchFailure(error, path));
       });
       if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
-      return unwrap(await response.json());
+      return unwrap(await readJsonResponse(response, path));
     }
 
     async function apiPut(path, body) {
@@ -1401,13 +1417,13 @@
         throw new Error(explainFetchFailure(error, path));
       });
       if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
-      return unwrap(await response.json());
+      return unwrap(await readJsonResponse(response, path));
     }
 
     async function refreshHealthStatus(baseUrlOverride) {
       const baseUrl = (baseUrlOverride || state.settings.apiBaseUrl || "").replace(/\/+$/, "");
       const response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
-      const body = await response.json().catch(() => ({}));
+      const body = await readJsonResponse(response, "/health");
       state.settings.health = response.ok ? `OK ${response.status}` : `HTTP ${response.status}`;
       state.settings.providerStatus = body.providers || body.data?.providers || null;
       state.settings.apiBaseUrl = baseUrl;
