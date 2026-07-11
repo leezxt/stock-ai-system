@@ -9,20 +9,17 @@ class FallbackAiProviderAdapter implements AiProviderAdapter {
     private final OpenAiProviderAdapter openAiProviderAdapter;
     private final GeminiProviderAdapter geminiProviderAdapter;
     private final DeepSeekProviderAdapter deepSeekProviderAdapter;
-    private final MimoProviderAdapter mimoProviderAdapter;
     private final MockAiProviderAdapter mockAiProviderAdapter;
 
     FallbackAiProviderAdapter(
         OpenAiProviderAdapter openAiProviderAdapter,
         GeminiProviderAdapter geminiProviderAdapter,
         DeepSeekProviderAdapter deepSeekProviderAdapter,
-        MimoProviderAdapter mimoProviderAdapter,
         MockAiProviderAdapter mockAiProviderAdapter
     ) {
         this.openAiProviderAdapter = openAiProviderAdapter;
         this.geminiProviderAdapter = geminiProviderAdapter;
         this.deepSeekProviderAdapter = deepSeekProviderAdapter;
-        this.mimoProviderAdapter = mimoProviderAdapter;
         this.mockAiProviderAdapter = mockAiProviderAdapter;
     }
 
@@ -46,16 +43,6 @@ class FallbackAiProviderAdapter implements AiProviderAdapter {
                     provider,
                     index,
                     deepSeekProviderAdapter.hasApiKey() ? "mock-ai:deepseek-live-failed" : "mock-ai:no-deepseek-key"
-                ));
-        }
-        if ("MIMO".equalsIgnoreCase(provider)) {
-            return mimoProviderAdapter.tryAnalyze(stock, context, provider)
-                .orElseGet(() -> mockAiProviderAdapter.analyzeWithSource(
-                    stock,
-                    context,
-                    provider,
-                    index,
-                    mimoProviderAdapter.hasApiKey() ? "mock-ai:mimo-live-failed" : "mock-ai:no-mimo-key"
                 ));
         }
         return openAiProviderAdapter.tryAnalyze(stock, context, provider)
@@ -88,16 +75,6 @@ class FallbackAiProviderAdapter implements AiProviderAdapter {
                     provider,
                     message,
                     deepSeekProviderAdapter.hasApiKey() ? "mock-ai:deepseek-live-failed" : "mock-ai:no-deepseek-key"
-                ));
-        }
-        if ("MIMO".equalsIgnoreCase(provider)) {
-            return mimoProviderAdapter.tryChatMessage(stock, context, provider, message)
-                .orElseGet(() -> mockAiProviderAdapter.chatMessageWithSource(
-                    stock,
-                    context,
-                    provider,
-                    message,
-                    mimoProviderAdapter.hasApiKey() ? "mock-ai:mimo-live-failed" : "mock-ai:no-mimo-key"
                 ));
         }
         return openAiProviderAdapter.tryChatMessage(stock, context, provider, message)

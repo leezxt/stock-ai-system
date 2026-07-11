@@ -21,37 +21,34 @@ class AccountSettingsServiceTest {
 
         AccountSettingsService.AccountSettingsView saved = service.update(
             "demo@example.com",
-            new AccountSettingsService.AccountSettingsUpdate("MIMO", "openai-secret", "gemini-secret", "deepseek-secret", "mimo-secret")
+            new AccountSettingsService.AccountSettingsUpdate("DEEPSEEK", "openai-secret", "gemini-secret", "deepseek-secret")
         );
         AccountSettingsService.AccountSettingsView loaded = service.get("demo@example.com");
 
-        assertThat(saved.preferredProvider()).isEqualTo("MIMO");
+        assertThat(saved.preferredProvider()).isEqualTo("DEEPSEEK");
         assertThat(loaded.hasOpenAiApiKey()).isTrue();
         assertThat(loaded.hasGeminiApiKey()).isTrue();
         assertThat(loaded.hasDeepSeekApiKey()).isTrue();
-        assertThat(loaded.hasMimoApiKey()).isTrue();
         assertThat(service.openAiApiKey("demo@example.com")).isEqualTo("openai-secret");
         assertThat(service.geminiApiKey("demo@example.com")).isEqualTo("gemini-secret");
         assertThat(service.deepSeekApiKey("demo@example.com")).isEqualTo("deepseek-secret");
-        assertThat(service.mimoApiKey("demo@example.com")).isEqualTo("mimo-secret");
         String persisted = Files.readString(UserScopedFileLocator.resolve(tempDir, "", ".properties", "demo@example.com"));
-        assertThat(persisted).contains("enc\\:v1\\:").doesNotContain("openai-secret", "gemini-secret", "deepseek-secret", "mimo-secret");
+        assertThat(persisted).contains("enc\\:v1\\:").doesNotContain("openai-secret", "gemini-secret", "deepseek-secret");
     }
 
     @Test
     void keepsExistingKeysWhenUpdateOmitsThem() {
         AccountSettingsService service = new AccountSettingsService(tempDir);
-        service.update("demo@example.com", new AccountSettingsService.AccountSettingsUpdate("OPENAI", "openai-secret", "", "deepseek-secret", "mimo-secret"));
+        service.update("demo@example.com", new AccountSettingsService.AccountSettingsUpdate("OPENAI", "openai-secret", "", "deepseek-secret"));
 
         AccountSettingsService.AccountSettingsView updated = service.update(
             "demo@example.com",
-            new AccountSettingsService.AccountSettingsUpdate("GEMINI", null, null, null, null)
+            new AccountSettingsService.AccountSettingsUpdate("GEMINI", null, null, null)
         );
 
         assertThat(updated.preferredProvider()).isEqualTo("GEMINI");
         assertThat(service.openAiApiKey("demo@example.com")).isEqualTo("openai-secret");
         assertThat(service.deepSeekApiKey("demo@example.com")).isEqualTo("deepseek-secret");
-        assertThat(service.mimoApiKey("demo@example.com")).isEqualTo("mimo-secret");
     }
 
     @Test
@@ -71,7 +68,7 @@ class AccountSettingsServiceTest {
         assertThat(loaded.preferredProvider()).isEqualTo("OPENAI");
         assertThat(service.openAiApiKey("legacy@example.com")).isEqualTo("legacy-openai");
 
-        service.update("legacy@example.com", new AccountSettingsService.AccountSettingsUpdate("GEMINI", null, "gemini-secret", null, null));
+        service.update("legacy@example.com", new AccountSettingsService.AccountSettingsUpdate("GEMINI", null, "gemini-secret", null));
 
         Path current = UserScopedFileLocator.resolve(tempDir, "", ".properties", "legacy@example.com");
         assertThat(current).exists();

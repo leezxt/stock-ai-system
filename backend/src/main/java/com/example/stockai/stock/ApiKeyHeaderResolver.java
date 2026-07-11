@@ -32,10 +32,6 @@ class ApiKeyHeaderResolver {
         return resolve("X-DeepSeek-Api-Key", fallback, "DEEPSEEK");
     }
 
-    String resolveMimo(String fallback) {
-        return resolve("X-Mimo-Api-Key", fallback, "MIMO");
-    }
-
     private String resolve(String headerName, String fallback, String provider) {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (attributes instanceof ServletRequestAttributes servletAttributes) {
@@ -51,7 +47,6 @@ class ApiKeyHeaderResolver {
                     case "OPENAI" -> accountSettingsService.openAiApiKey(email);
                     case "GEMINI" -> accountSettingsService.geminiApiKey(email);
                     case "DEEPSEEK" -> accountSettingsService.deepSeekApiKey(email);
-                    case "MIMO" -> accountSettingsService.mimoApiKey(email);
                     default -> "";
                 };
                 if (!storedKey.isBlank()) {

@@ -35,23 +35,13 @@ class ApiKeyHeaderResolverTest {
     }
 
     @Test
-    void resolvesMimoHeaderBeforeFallback() {
-        ApiKeyHeaderResolver resolver = resolver();
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("X-Mimo-Api-Key", " mimo-header ");
-        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-
-        assertThat(resolver.resolveMimo("mimo-fallback")).isEqualTo("mimo-header");
-    }
-
-    @Test
     void resolvesStoredDeepSeekKeyForLoggedInUser() {
         AuthService authService = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
         AccountSettingsService accountSettingsService = new AccountSettingsService(tempDir.resolve("account-settings"));
         AuthService.AuthResult auth = authService.register("deepseek@example.test", "Passw0rd!-secure");
         accountSettingsService.update(
             auth.user().email(),
-            new AccountSettingsService.AccountSettingsUpdate("DEEPSEEK", null, null, "stored-deepseek", null)
+            new AccountSettingsService.AccountSettingsUpdate("DEEPSEEK", null, null, "stored-deepseek")
         );
         ApiKeyHeaderResolver resolver = new ApiKeyHeaderResolver(authService, accountSettingsService);
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -59,23 +49,6 @@ class ApiKeyHeaderResolverTest {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
         assertThat(resolver.resolveDeepSeek("deepseek-fallback")).isEqualTo("stored-deepseek");
-    }
-
-    @Test
-    void resolvesStoredMimoKeyForLoggedInUser() {
-        AuthService authService = new AuthService(new UserStore(tempDir.resolve("users.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
-        AccountSettingsService accountSettingsService = new AccountSettingsService(tempDir.resolve("account-settings"));
-        AuthService.AuthResult auth = authService.register("mimo@example.test", "Passw0rd!-secure");
-        accountSettingsService.update(
-            auth.user().email(),
-            new AccountSettingsService.AccountSettingsUpdate("MIMO", null, null, null, "stored-mimo")
-        );
-        ApiKeyHeaderResolver resolver = new ApiKeyHeaderResolver(authService, accountSettingsService);
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer " + auth.token());
-        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-
-        assertThat(resolver.resolveMimo("mimo-fallback")).isEqualTo("stored-mimo");
     }
 
     private ApiKeyHeaderResolver resolver() {

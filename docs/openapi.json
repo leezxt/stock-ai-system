@@ -255,7 +255,7 @@
       },
       "AiProvider": {
         "type": "string",
-        "enum": ["OPENAI", "GEMINI", "DEEPSEEK", "MIMO"]
+        "enum": ["OPENAI", "GEMINI", "DEEPSEEK"]
       },
       "SymbolRequest": {
         "type": "object",

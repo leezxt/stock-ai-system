@@ -58,7 +58,6 @@ public class AccountSettingsService {
         putIfPresent(properties, "openAiApiKey", update.openAiApiKey() == null ? null : normalizeSecret(update.openAiApiKey()));
         putIfPresent(properties, "geminiApiKey", update.geminiApiKey() == null ? null : normalizeSecret(update.geminiApiKey()));
         putIfPresent(properties, "deepSeekApiKey", update.deepSeekApiKey() == null ? null : normalizeSecret(update.deepSeekApiKey()));
-        putIfPresent(properties, "mimoApiKey", update.mimoApiKey() == null ? null : normalizeSecret(update.mimoApiKey()));
         properties.setProperty("updatedAt", Instant.now().toString());
         save(email, properties);
         return toView(properties);
@@ -76,17 +75,12 @@ public class AccountSettingsService {
         return secretCipher.decrypt(normalizeSecret(load(email).getProperty("deepSeekApiKey")));
     }
 
-    public synchronized String mimoApiKey(String email) {
-        return secretCipher.decrypt(normalizeSecret(load(email).getProperty("mimoApiKey")));
-    }
-
     private AccountSettingsView toView(Properties properties) {
         return new AccountSettingsView(
             normalizeProvider(properties.getProperty("preferredProvider")),
             !normalizeSecret(properties.getProperty("openAiApiKey")).isBlank(),
             !normalizeSecret(properties.getProperty("geminiApiKey")).isBlank(),
             !normalizeSecret(properties.getProperty("deepSeekApiKey")).isBlank(),
-            !normalizeSecret(properties.getProperty("mimoApiKey")).isBlank(),
             properties.getProperty("updatedAt", "")
         );
     }
@@ -128,7 +122,7 @@ public class AccountSettingsService {
     private Properties loadFromDatabase(String email) {
         Properties properties = new Properties();
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-            SELECT preferred_provider, openai_api_key, gemini_api_key, deepseek_api_key, mimo_api_key, updated_at
+            SELECT preferred_provider, openai_api_key, gemini_api_key, deepseek_api_key, updated_at
             FROM stockai_account_settings
             WHERE email = ?
             """, email);
@@ -140,7 +134,6 @@ public class AccountSettingsService {
         properties.setProperty("openAiApiKey", string(row.get("openai_api_key")));
         properties.setProperty("geminiApiKey", string(row.get("gemini_api_key")));
         properties.setProperty("deepSeekApiKey", string(row.get("deepseek_api_key")));
-        properties.setProperty("mimoApiKey", string(row.get("mimo_api_key")));
         properties.setProperty("updatedAt", instantString(row.get("updated_at")));
         return properties;
     }
@@ -149,15 +142,14 @@ public class AccountSettingsService {
         Instant updatedAt = Instant.parse(properties.getProperty("updatedAt", Instant.now().toString()));
         jdbcTemplate.update("""
             INSERT INTO stockai_account_settings (
-                email, preferred_provider, openai_api_key, gemini_api_key, deepseek_api_key, mimo_api_key, updated_at
+                email, preferred_provider, openai_api_key, gemini_api_key, deepseek_api_key, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT (email) DO UPDATE SET
                 preferred_provider = EXCLUDED.preferred_provider,
                 openai_api_key = EXCLUDED.openai_api_key,
                 gemini_api_key = EXCLUDED.gemini_api_key,
                 deepseek_api_key = EXCLUDED.deepseek_api_key,
-                mimo_api_key = EXCLUDED.mimo_api_key,
                 updated_at = EXCLUDED.updated_at
             """,
             email,
@@ -165,7 +157,6 @@ public class AccountSettingsService {
             normalizeSecret(properties.getProperty("openAiApiKey")),
             normalizeSecret(properties.getProperty("geminiApiKey")),
             normalizeSecret(properties.getProperty("deepSeekApiKey")),
-            normalizeSecret(properties.getProperty("mimoApiKey")),
             Timestamp.from(updatedAt)
         );
     }
@@ -204,7 +195,7 @@ public class AccountSettingsService {
         }
         String normalized = provider.trim().toUpperCase();
         return switch (normalized) {
-            case "OPENAI", "GEMINI", "CLAUDE", "DEEPSEEK", "MIMO" -> normalized;
+            case "OPENAI", "GEMINI", "CLAUDE", "DEEPSEEK" -> normalized;
             default -> "";
         };
     }
@@ -226,7 +217,7 @@ public class AccountSettingsService {
     private Properties encryptedCopy(Properties source) {
         Properties encrypted = new Properties();
         encrypted.putAll(source);
-        for (String key : List.of("openAiApiKey", "geminiApiKey", "deepSeekApiKey", "mimoApiKey")) {
+        for (String key : List.of("openAiApiKey", "geminiApiKey", "deepSeekApiKey")) {
             String value = normalizeSecret(encrypted.getProperty(key));
             if (!value.isBlank()) {
                 encrypted.setProperty(key, secretCipher.encrypt(value));
@@ -239,14 +230,13 @@ public class AccountSettingsService {
         return new SecretCipher("stock-ai-test-encryption-key-32-bytes-minimum");
     }
 
-    public record AccountSettingsUpdate(String preferredProvider, String openAiApiKey, String geminiApiKey, String deepSeekApiKey, String mimoApiKey) {}
+    public record AccountSettingsUpdate(String preferredProvider, String openAiApiKey, String geminiApiKey, String deepSeekApiKey) {}
 
     public record AccountSettingsView(
         String preferredProvider,
         boolean hasOpenAiApiKey,
         boolean hasGeminiApiKey,
         boolean hasDeepSeekApiKey,
-        boolean hasMimoApiKey,
         String updatedAt
     ) {}
 }

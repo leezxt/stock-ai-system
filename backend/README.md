@@ -38,8 +38,6 @@ docker compose up --build
 
 ```powershell
 $env:OPENAI_API_KEY="your-key"
-$env:MIMO_API_KEY="your-key"
-$env:MIMO_MODEL="mimo-v2.5-pro"
 $env:ALPHAVANTAGE_API_KEY="your-key"
 $env:FINMIND_API_TOKEN="your-token"
 $env:FMP_API_KEY="your-key"

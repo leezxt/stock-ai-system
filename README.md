@@ -25,7 +25,6 @@ scripts\start-spring-dashboard.cmd
 
 ```powershell
 $env:OPENAI_API_KEY="your-key"
-$env:MIMO_API_KEY="your-key"
 $env:ALPHAVANTAGE_API_KEY="your-key"
 $env:FINMIND_API_TOKEN="your-token"
 $env:FMP_API_KEY="your-key"
@@ -248,7 +247,7 @@ http://<主機區域網路 IP>:18080/app
 
 後端 AI key 解析順序：
 
-1. Request header `X-OpenAI-Api-Key` / `X-Gemini-Api-Key` / `X-DeepSeek-Api-Key` / `X-Mimo-Api-Key`
+1. Request header `X-OpenAI-Api-Key` / `X-Gemini-Api-Key` / `X-DeepSeek-Api-Key`
 2. 已登入帳號的後端儲存 key
 3. backend 環境變數 / JVM 設定
 
@@ -302,12 +301,10 @@ $env:FINMIND_API_TOKEN="your-token"
 $env:FINMIND_BASE_URL="https://api.finmindtrade.com/api/v4"
 ```
 
-真實 AI 呼叫為 opt-in。OpenAI 可設定 `OPENAI_API_KEY`，MIMO 可設定 `MIMO_API_KEY`；MIMO 預設使用 OpenAI-compatible Chat Completions endpoint 與 `mimo-v2.5-pro` 模型。先設定環境變數並重新啟動 backend：
+真實 AI 呼叫為 opt-in。OpenAI、Gemini 與 DeepSeek 可分別設定對應 API Key。先設定環境變數並重新啟動 backend：
 
 ```powershell
 $env:OPENAI_API_KEY="your-key"
-$env:MIMO_API_KEY="your-key"
-$env:MIMO_MODEL="mimo-v2.5-pro"
 scripts\start-spring-dashboard.cmd
 ```
 

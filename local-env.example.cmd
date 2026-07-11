@@ -3,9 +3,6 @@ rem Copy this file to local-env.cmd and put real keys there.
 rem local-env.cmd is ignored by git.
 set "OPENAI_API_KEY="
 set "OPENAI_MODEL=gpt-5.5"
-rem set "MIMO_API_KEY="
-rem set "MIMO_MODEL=mimo-v2.5-pro"
-rem set "MIMO_CHAT_COMPLETIONS_URL=https://api.xiaomimimo.com/v1/chat/completions"
 rem set "STOCK_AI_BASE_URL=http://localhost:8080/api/v1"
 rem set "STOCKAI_AUTH_SECRET=replace-with-at-least-32-random-characters"
 rem set "STOCKAI_SECRETS_ENCRYPTION_KEY=replace-with-a-separate-random-secret"

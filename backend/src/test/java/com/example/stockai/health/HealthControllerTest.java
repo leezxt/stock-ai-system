@@ -16,8 +16,6 @@ class HealthControllerTest {
         assertThat(response.providers().openAiModel()).isEqualTo("gpt-5.5");
         assertThat(response.providers().deepSeekConfigured()).isFalse();
         assertThat(response.providers().deepSeekModel()).isEqualTo("deepseek-chat");
-        assertThat(response.providers().mimoConfigured()).isFalse();
-        assertThat(response.providers().mimoModel()).isEqualTo("mimo-v2.5-pro");
         assertThat(response.providers().alphaVantageNewsConfigured()).isFalse();
         assertThat(response.providers().alphaVantageTranscriptConfigured()).isFalse();
         assertThat(response.providers().fmpConfigured()).isFalse();
