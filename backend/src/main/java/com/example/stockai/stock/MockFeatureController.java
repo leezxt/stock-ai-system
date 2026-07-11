@@ -25,8 +25,8 @@ import jakarta.servlet.http.HttpServletRequest;
 @RestController
 @RequestMapping("/api/v1")
 public class MockFeatureController {
-    private static final List<String> DEFAULT_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK", "MIMO");
-    private static final List<String> ALLOWED_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK", "MIMO");
+    private static final List<String> DEFAULT_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK");
+    private static final List<String> ALLOWED_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK", "CUSTOM");
 
     private final AiProviderAdapter aiProviderAdapter;
     private final RagContextService ragContextService;
@@ -118,15 +118,32 @@ public class MockFeatureController {
         String provider = providerOrDefault(request.provider());
         RagContext context = ragContextService.buildChatContext(stock, 5, message, ownerEmail);
         AiChatResult result = aiProviderAdapter.chatMessage(stock, context, provider, message);
+        AiChatChart chart = chartForQuestion(stock, message);
         return ApiResponse.of(new AiChatResponse(
             stock.market(),
             stock.symbol(),
             provider,
             result.source(),
             result.message(),
+            chart,
             context.evidence(),
             Instant.now()
         ));
+    }
+
+    private static AiChatChart chartForQuestion(StockRecord stock, String message) {
+        String normalized = message == null ? "" : message.toLowerCase();
+        boolean requested = List.of("指數", "價格", "走勢", "數值", "漲跌", "報酬", "比較", "圖表", "chart", "trend")
+            .stream().anyMatch(normalized::contains);
+        if (!requested || stock.prices() == null || stock.prices().size() < 2) {
+            return null;
+        }
+        int start = Math.max(0, stock.prices().size() - 30);
+        List<BigDecimal> values = List.copyOf(stock.prices().subList(start, stock.prices().size()));
+        List<String> labels = java.util.stream.IntStream.range(0, values.size())
+            .mapToObj(index -> "T-" + (values.size() - index - 1))
+            .toList();
+        return new AiChatChart("line", stock.symbol() + " 最近價格走勢", labels, values, stock.currency());
     }
 
     @PostMapping({"/backtest", "/backtests"})
@@ -254,9 +271,11 @@ public class MockFeatureController {
         String provider,
         String source,
         String message,
+        AiChatChart chart,
         List<RetrievedDocument> evidence,
         Instant generatedAt
     ) {}
+    record AiChatChart(String type, String title, List<String> labels, List<BigDecimal> values, String unit) {}
     record BacktestResponse(
         String symbol,
         Market market,

@@ -25,7 +25,6 @@ scripts\start-spring-dashboard.cmd
 
 ```powershell
 $env:OPENAI_API_KEY="your-key"
-$env:MIMO_API_KEY="your-key"
 $env:ALPHAVANTAGE_API_KEY="your-key"
 $env:FINMIND_API_TOKEN="your-token"
 $env:FMP_API_KEY="your-key"
@@ -172,6 +171,8 @@ mvn test
 - `DELETE /api/v1/watchlist/{market}/{symbol}`
 - `POST /api/v1/backtests`
 
+AI 問答可處理目前股票以外的一般問題。當問題包含指數、價格、走勢、數值、漲跌、報酬、比較或圖表意圖時，`/ai/chat` 會額外回傳 `chart`（`type`、`title`、`labels`、`values`、`unit`）；前端使用可靠的目前標的價格序列繪製 SVG 折線圖，不使用 AI 自行生成的數字。
+
 啟動 Spring Boot backend:
 
 ```powershell
@@ -221,9 +222,40 @@ STOCKAI_CORS_ALLOWED_ORIGINS=https://your-domain.example
 
 若未另外設定 `STOCKAI_SECRETS_ENCRYPTION_KEY`，系統會以 `STOCKAI_AUTH_SECRET` 經領域分離雜湊後作為相容 fallback；正式環境仍建議使用獨立密鑰。
 
+### 自訂第三方 AI 供應商
+
+登入後可在設定頁填入「自訂名稱／模型名稱」、「API Key」與完整的 OpenAI-compatible Chat Completions 請求網址，然後選擇自訂供應商執行分析或聊天。API Key 會以 AES-256-GCM 加密保存，不會回傳到前端。
+
+安全限制：請求網址必須是公開的 `https://` 端點，只允許預設 443 埠，不接受 URL 內帳密、fragment、localhost 或私有／鏈路本地 IP。自訂名稱同時作為送給第三方 API 的 `model` 值。
+
+### Windows 自架部署
+
+專案可完全在自己的 Windows 主機執行，不需要外部雲端平台。先安裝並啟動 Docker Desktop，然後在專案根目錄執行：
+
+```powershell
+.\selfhost.ps1 start
+```
+
+第一次啟動會在被 Git 忽略的 `.env` 自動產生資料庫密碼、工作階段簽章密鑰與 API Key 加密密鑰。應用預設開放在主機的 `18080`，PostgreSQL 只綁定 `127.0.0.1`，不會直接暴露到區域網路或網際網路。
+
+```text
+http://localhost:18080/app
+http://<主機區域網路 IP>:18080/app
+```
+
+管理指令：
+
+```powershell
+.\selfhost.ps1 status
+.\selfhost.ps1 logs
+.\selfhost.ps1 stop
+```
+
+若要讓網際網路使用者連線，應在應用前方配置 HTTPS reverse proxy 或安全 tunnel；不要直接對外開放 PostgreSQL 的 `5432`。
+
 後端 AI key 解析順序：
 
-1. Request header `X-OpenAI-Api-Key` / `X-Gemini-Api-Key` / `X-DeepSeek-Api-Key` / `X-Mimo-Api-Key`
+1. Request header `X-OpenAI-Api-Key` / `X-Gemini-Api-Key` / `X-DeepSeek-Api-Key`
 2. 已登入帳號的後端儲存 key
 3. backend 環境變數 / JVM 設定
 
@@ -277,12 +309,10 @@ $env:FINMIND_API_TOKEN="your-token"
 $env:FINMIND_BASE_URL="https://api.finmindtrade.com/api/v4"
 ```
 
-真實 AI 呼叫為 opt-in。OpenAI 可設定 `OPENAI_API_KEY`，MIMO 可設定 `MIMO_API_KEY`；MIMO 預設使用 OpenAI-compatible Chat Completions endpoint 與 `mimo-v2.5-pro` 模型。先設定環境變數並重新啟動 backend：
+真實 AI 呼叫為 opt-in。OpenAI、Gemini 與 DeepSeek 可分別設定對應 API Key。先設定環境變數並重新啟動 backend：
 
 ```powershell
 $env:OPENAI_API_KEY="your-key"
-$env:MIMO_API_KEY="your-key"
-$env:MIMO_MODEL="mimo-v2.5-pro"
 scripts\start-spring-dashboard.cmd
 ```
 

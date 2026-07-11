@@ -5,6 +5,7 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URI;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -15,9 +16,12 @@ import java.util.Properties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.example.stockai.common.AtomicFileWriter;
 import com.example.stockai.common.UserScopedFileLocator;
+import com.example.stockai.stock.PublicHttpsUrlValidator;
 
 @Service
 public class AccountSettingsService {
@@ -58,7 +62,9 @@ public class AccountSettingsService {
         putIfPresent(properties, "openAiApiKey", update.openAiApiKey() == null ? null : normalizeSecret(update.openAiApiKey()));
         putIfPresent(properties, "geminiApiKey", update.geminiApiKey() == null ? null : normalizeSecret(update.geminiApiKey()));
         putIfPresent(properties, "deepSeekApiKey", update.deepSeekApiKey() == null ? null : normalizeSecret(update.deepSeekApiKey()));
-        putIfPresent(properties, "mimoApiKey", update.mimoApiKey() == null ? null : normalizeSecret(update.mimoApiKey()));
+        putIfPresent(properties, "customProviderName", update.customProviderName() == null ? null : normalizeName(update.customProviderName()));
+        putIfPresent(properties, "customProviderApiKey", update.customProviderApiKey() == null ? null : normalizeSecret(update.customProviderApiKey()));
+        putIfPresent(properties, "customProviderUrl", update.customProviderUrl() == null ? null : normalizeUrl(update.customProviderUrl()));
         properties.setProperty("updatedAt", Instant.now().toString());
         save(email, properties);
         return toView(properties);
@@ -76,8 +82,13 @@ public class AccountSettingsService {
         return secretCipher.decrypt(normalizeSecret(load(email).getProperty("deepSeekApiKey")));
     }
 
-    public synchronized String mimoApiKey(String email) {
-        return secretCipher.decrypt(normalizeSecret(load(email).getProperty("mimoApiKey")));
+    public synchronized CustomProviderSettings customProviderSettings(String email) {
+        Properties properties = load(email);
+        return new CustomProviderSettings(
+            normalizeName(properties.getProperty("customProviderName")),
+            secretCipher.decrypt(normalizeSecret(properties.getProperty("customProviderApiKey"))),
+            normalizeUrl(properties.getProperty("customProviderUrl"))
+        );
     }
 
     private AccountSettingsView toView(Properties properties) {
@@ -86,7 +97,9 @@ public class AccountSettingsService {
             !normalizeSecret(properties.getProperty("openAiApiKey")).isBlank(),
             !normalizeSecret(properties.getProperty("geminiApiKey")).isBlank(),
             !normalizeSecret(properties.getProperty("deepSeekApiKey")).isBlank(),
-            !normalizeSecret(properties.getProperty("mimoApiKey")).isBlank(),
+            normalizeName(properties.getProperty("customProviderName")),
+            !normalizeSecret(properties.getProperty("customProviderApiKey")).isBlank(),
+            normalizeUrl(properties.getProperty("customProviderUrl")),
             properties.getProperty("updatedAt", "")
         );
     }
@@ -128,7 +141,8 @@ public class AccountSettingsService {
     private Properties loadFromDatabase(String email) {
         Properties properties = new Properties();
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-            SELECT preferred_provider, openai_api_key, gemini_api_key, deepseek_api_key, mimo_api_key, updated_at
+            SELECT preferred_provider, openai_api_key, gemini_api_key, deepseek_api_key,
+                   custom_provider_name, custom_provider_api_key, custom_provider_url, updated_at
             FROM stockai_account_settings
             WHERE email = ?
             """, email);
@@ -140,7 +154,9 @@ public class AccountSettingsService {
         properties.setProperty("openAiApiKey", string(row.get("openai_api_key")));
         properties.setProperty("geminiApiKey", string(row.get("gemini_api_key")));
         properties.setProperty("deepSeekApiKey", string(row.get("deepseek_api_key")));
-        properties.setProperty("mimoApiKey", string(row.get("mimo_api_key")));
+        properties.setProperty("customProviderName", string(row.get("custom_provider_name")));
+        properties.setProperty("customProviderApiKey", string(row.get("custom_provider_api_key")));
+        properties.setProperty("customProviderUrl", string(row.get("custom_provider_url")));
         properties.setProperty("updatedAt", instantString(row.get("updated_at")));
         return properties;
     }
@@ -149,15 +165,18 @@ public class AccountSettingsService {
         Instant updatedAt = Instant.parse(properties.getProperty("updatedAt", Instant.now().toString()));
         jdbcTemplate.update("""
             INSERT INTO stockai_account_settings (
-                email, preferred_provider, openai_api_key, gemini_api_key, deepseek_api_key, mimo_api_key, updated_at
+                email, preferred_provider, openai_api_key, gemini_api_key, deepseek_api_key,
+                custom_provider_name, custom_provider_api_key, custom_provider_url, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (email) DO UPDATE SET
                 preferred_provider = EXCLUDED.preferred_provider,
                 openai_api_key = EXCLUDED.openai_api_key,
                 gemini_api_key = EXCLUDED.gemini_api_key,
                 deepseek_api_key = EXCLUDED.deepseek_api_key,
-                mimo_api_key = EXCLUDED.mimo_api_key,
+                custom_provider_name = EXCLUDED.custom_provider_name,
+                custom_provider_api_key = EXCLUDED.custom_provider_api_key,
+                custom_provider_url = EXCLUDED.custom_provider_url,
                 updated_at = EXCLUDED.updated_at
             """,
             email,
@@ -165,7 +184,9 @@ public class AccountSettingsService {
             normalizeSecret(properties.getProperty("openAiApiKey")),
             normalizeSecret(properties.getProperty("geminiApiKey")),
             normalizeSecret(properties.getProperty("deepSeekApiKey")),
-            normalizeSecret(properties.getProperty("mimoApiKey")),
+            normalizeName(properties.getProperty("customProviderName")),
+            normalizeSecret(properties.getProperty("customProviderApiKey")),
+            normalizeUrl(properties.getProperty("customProviderUrl")),
             Timestamp.from(updatedAt)
         );
     }
@@ -198,13 +219,41 @@ public class AccountSettingsService {
         return value == null ? "" : value.trim();
     }
 
+    private static String normalizeName(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.length() > 80) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "custom provider name exceeds 80 characters");
+        }
+        return normalized;
+    }
+
+    private static String normalizeUrl(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.length() > 2_048) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "custom provider URL exceeds 2048 characters");
+        }
+        if (!normalized.isBlank()) {
+            try {
+                URI uri = URI.create(normalized);
+                if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null
+                    || uri.getFragment() != null || (uri.getPort() != -1 && uri.getPort() != 443)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "custom provider URL must be a public https endpoint");
+                }
+                PublicHttpsUrlValidator.validate(normalized);
+            } catch (IllegalArgumentException ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "custom provider URL is invalid", ex);
+            }
+        }
+        return normalized;
+    }
+
     private static String normalizeProvider(String provider) {
         if (provider == null || provider.isBlank()) {
             return "";
         }
         String normalized = provider.trim().toUpperCase();
         return switch (normalized) {
-            case "OPENAI", "GEMINI", "CLAUDE", "DEEPSEEK", "MIMO" -> normalized;
+            case "OPENAI", "GEMINI", "CLAUDE", "DEEPSEEK", "CUSTOM" -> normalized;
             default -> "";
         };
     }
@@ -226,7 +275,7 @@ public class AccountSettingsService {
     private Properties encryptedCopy(Properties source) {
         Properties encrypted = new Properties();
         encrypted.putAll(source);
-        for (String key : List.of("openAiApiKey", "geminiApiKey", "deepSeekApiKey", "mimoApiKey")) {
+        for (String key : List.of("openAiApiKey", "geminiApiKey", "deepSeekApiKey", "customProviderApiKey")) {
             String value = normalizeSecret(encrypted.getProperty(key));
             if (!value.isBlank()) {
                 encrypted.setProperty(key, secretCipher.encrypt(value));
@@ -239,14 +288,30 @@ public class AccountSettingsService {
         return new SecretCipher("stock-ai-test-encryption-key-32-bytes-minimum");
     }
 
-    public record AccountSettingsUpdate(String preferredProvider, String openAiApiKey, String geminiApiKey, String deepSeekApiKey, String mimoApiKey) {}
+    public record AccountSettingsUpdate(
+        String preferredProvider,
+        String openAiApiKey,
+        String geminiApiKey,
+        String deepSeekApiKey,
+        String customProviderName,
+        String customProviderApiKey,
+        String customProviderUrl
+    ) {}
 
     public record AccountSettingsView(
         String preferredProvider,
         boolean hasOpenAiApiKey,
         boolean hasGeminiApiKey,
         boolean hasDeepSeekApiKey,
-        boolean hasMimoApiKey,
+        String customProviderName,
+        boolean hasCustomProviderApiKey,
+        String customProviderUrl,
         String updatedAt
     ) {}
+
+    public record CustomProviderSettings(String name, String apiKey, String url) {
+        public boolean configured() {
+            return !name.isBlank() && !apiKey.isBlank() && !url.isBlank();
+        }
+    }
 }

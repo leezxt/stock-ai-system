@@ -80,6 +80,21 @@ class MockFeatureControllerTest {
         assertThat(response.source()).isEqualTo("mock-ai");
         assertThat(response.evidence()).hasSize(1);
         assertThat(response.evidence().get(0).source()).isEqualTo("Reuters");
+        assertThat(response.chart()).isNull();
+    }
+
+    @Test
+    void chatReturnsChartForNumericTrendQuestion() {
+        Fixture fixture = fixture();
+        MockFeatureController.AiChatResponse response = fixture.controller().chat(
+            fixture.request(),
+            new MockFeatureController.AiChatRequest(Market.US, "AAPL", "OPENAI", "請顯示最近價格走勢圖表")
+        ).data();
+
+        assertThat(response.chart()).isNotNull();
+        assertThat(response.chart().type()).isEqualTo("line");
+        assertThat(response.chart().labels()).hasSameSizeAs(response.chart().values());
+        assertThat(response.chart().values()).hasSizeGreaterThan(1);
     }
 
     @Test

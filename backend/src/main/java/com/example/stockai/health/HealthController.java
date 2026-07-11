@@ -46,12 +46,6 @@ public class HealthController {
     @Value("${stockai.deepseek.model:${DEEPSEEK_MODEL:deepseek-chat}}")
     private String deepSeekModel = "deepseek-chat";
 
-    @Value("${stockai.mimo.api-key:${MIMO_API_KEY:}}")
-    private String mimoApiKey = "";
-
-    @Value("${stockai.mimo.model:${MIMO_MODEL:mimo-v2.5-pro}}")
-    private String mimoModel = "mimo-v2.5-pro";
-
     @Value("${stockai.alpha-vantage.api-key:${ALPHAVANTAGE_API_KEY:}}")
     private String alphaVantageApiKey = "";
 
@@ -101,8 +95,6 @@ public class HealthController {
             isBlank(geminiModel) ? "gemini-2.0-flash" : geminiModel.trim(),
             !isBlank(deepSeekApiKey),
             isBlank(deepSeekModel) ? "deepseek-chat" : deepSeekModel.trim(),
-            !isBlank(mimoApiKey),
-            isBlank(mimoModel) ? "mimo-v2.5-pro" : mimoModel.trim(),
             alphaVantageConfigured,
             alphaVantageConfigured,
             alphaVantageConfigured,
@@ -176,8 +168,6 @@ public class HealthController {
         String geminiModel,
         boolean deepSeekConfigured,
         String deepSeekModel,
-        boolean mimoConfigured,
-        String mimoModel,
         boolean alphaVantageConfigured,
         boolean alphaVantageNewsConfigured,
         boolean alphaVantageTranscriptConfigured,

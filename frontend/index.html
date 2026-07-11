@@ -469,6 +469,11 @@
       background: linear-gradient(135deg, rgba(95, 243, 210, .24), rgba(255, 200, 87, .12));
       color: #f4fffb;
     }
+    .chat-chart { margin-top: 12px; padding: 14px; border: 1px solid #28445f; border-radius: 12px; background: #091521; }
+    .chat-chart.hidden { display: none; }
+    .chat-chart h3 { margin: 0 0 8px; font-size: 15px; }
+    .chat-chart svg { width: 100%; height: 220px; display: block; }
+    .chat-chart .axis-label { fill: #8fa8bd; font-size: 11px; }
     .interaction-toast {
       position: fixed;
       right: 22px;
@@ -792,7 +797,7 @@
           <option>CLAUDE</option>
           <option>GEMINI</option>
           <option>DEEPSEEK</option>
-          <option>MIMO</option>
+          <option value="CUSTOM">自訂供應商</option>
         </select>
         <button id="addWatch">加入自選</button>
       </div>
@@ -889,7 +894,6 @@
             <div class="provider-grid" id="providerButtons"></div>
             <div class="watch-actions" style="margin-top:8px">
               <button data-fail="DEEPSEEK">模擬 DeepSeek 失敗</button>
-              <button data-fail="MIMO">模擬 MIMO 失敗</button>
               <button data-clear-fail="1">清除失敗狀態</button>
             </div>
             <table style="margin-top:12px">
@@ -930,9 +934,11 @@
             <button data-question="這檔股票未來 5 日風險在哪？">未來 5 日風險</button>
             <button data-question="目前技術面偏多還是偏空？">技術面方向</button>
             <button data-question="不同模型分歧的原因是什麼？">模型分歧原因</button>
+            <button data-question="請顯示最近價格走勢圖表">價格走勢圖</button>
           </div>
           <input id="chatInput" placeholder="輸入問題，例如：如果跌破 MA20 代表什麼？" />
           <div class="card" style="margin-top:12px;background:#0c1827" id="chatAnswer"></div>
+          <div id="chatChart" class="chat-chart hidden" aria-live="polite"></div>
           <div class="evidence-block">
             <h3>AI 問答參考證據</h3>
             <div id="chatEvidence" class="muted">尚未載入檢索證據。</div>
@@ -1020,14 +1026,17 @@
             <input id="openAiApiKey" placeholder="OpenAI API Key（本機儲存）" aria-label="OpenAI API Key" />
             <input id="geminiApiKey" placeholder="Gemini API Key（本機儲存）" aria-label="Gemini API Key" />
             <input id="deepSeekApiKey" placeholder="DeepSeek API Key（本機儲存）" aria-label="DeepSeek API Key" />
-            <input id="mimoApiKey" placeholder="MIMO API Key（本機儲存）" aria-label="MIMO API Key" />
           </div>
           <div class="watch-actions" style="margin-top:8px">
             <button id="saveApiKeys">儲存 AI Key</button>
             <button id="clearOpenAiKey">清除 OpenAI Key</button>
             <button id="clearGeminiKey">清除 Gemini Key</button>
             <button id="clearDeepSeekKey">清除 DeepSeek Key</button>
-            <button id="clearMimoKey">清除 MIMO Key</button>
+          </div>
+          <div class="grid cols-3" style="margin-top:8px">
+            <input id="customProviderName" maxlength="80" placeholder="自訂名稱／模型名稱" aria-label="自訂供應商名稱" />
+            <input id="customProviderApiKey" placeholder="第三方 API Key（登入後加密儲存）" aria-label="第三方 API Key" />
+            <input id="customProviderUrl" type="url" maxlength="2048" placeholder="https://provider.example/v1/chat/completions" aria-label="第三方 API 請求位址" />
           </div>
             <p id="authMessage" class="footer-note">輸入 Key 後請按「儲存 AI Key」套用；未登入時儲存在本機，登入後儲存在後端帳號設定。留空儲存代表不覆蓋既有後端 key。</p>
         </div>
@@ -1109,7 +1118,7 @@
   </div>
 
   <script>
-    const providers = ["OPENAI", "CLAUDE", "GEMINI", "DEEPSEEK", "MIMO"];
+    const providers = ["OPENAI", "CLAUDE", "GEMINI", "DEEPSEEK"];
     const stocks = {
       US: {
         AAPL: stock("AAPL", "Apple Inc.", "US", "USD", 217.63, 2.14, [204, 207, 206, 211, 210, 214, 216, 215, 218]),
@@ -1271,7 +1280,10 @@
       const params = new URLSearchParams(location.search);
       try {
         const settings = { ...defaultSettings(), ...(JSON.parse(localStorage.getItem("stockAiSettings")) || {}) };
-        if (!["localhost", "127.0.0.1"].includes(location.hostname) && /^https?:\/\/localhost(?::\d+)?/i.test(settings.apiBaseUrl || "")) {
+        if (location.protocol !== "file:" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/api\/v1$/i.test(settings.apiBaseUrl || "")) {
+          settings.apiBaseUrl = "/api/v1";
+        }
+        if (location.protocol !== "file:" && !["localhost", "127.0.0.1"].includes(location.hostname) && /^https?:\/\/localhost(?::\d+)?/i.test(settings.apiBaseUrl || "")) {
           settings.apiBaseUrl = "/api/v1";
         }
         if (params.get("mode")) settings.mode = params.get("mode");
@@ -1288,7 +1300,7 @@
     function defaultSettings() {
       return {
         mode: "real",
-        apiBaseUrl: location.protocol === "file:" ? "http://localhost:8080/api/v1" : "/api/v1",
+        apiBaseUrl: location.protocol === "file:" ? "http://localhost:18080/api/v1" : "/api/v1",
         health: "未測試",
         lastDocumentImport: "尚未匯入文件",
         lastSourceImport: "尚未從來源抓取文件",
@@ -1300,12 +1312,14 @@
         hasStoredOpenAiApiKey: false,
         hasStoredGeminiApiKey: false,
         hasStoredDeepSeekApiKey: false,
-        hasStoredMimoApiKey: false,
+        customProviderName: "",
+        hasStoredCustomProviderApiKey: false,
+        customProviderUrl: "",
         accountSettingsUpdatedAt: "",
         openAiApiKey: "",
         geminiApiKey: "",
         deepSeekApiKey: "",
-        mimoApiKey: "",
+        customProviderApiKey: "",
         alphaVantageApiKey: "",
         finMindApiToken: "",
         fmpApiKey: "",
@@ -1320,7 +1334,7 @@
         openAiApiKey: "",
         geminiApiKey: "",
         deepSeekApiKey: "",
-        mimoApiKey: "",
+        customProviderApiKey: "",
         alphaVantageApiKey: "",
         finMindApiToken: "",
         fmpApiKey: ""
@@ -1338,9 +1352,6 @@
       }
       if (state.settings.deepSeekApiKey) {
         headers["X-DeepSeek-Api-Key"] = state.settings.deepSeekApiKey;
-      }
-      if (state.settings.mimoApiKey) {
-        headers["X-Mimo-Api-Key"] = state.settings.mimoApiKey;
       }
       if (state.settings.alphaVantageApiKey) {
         headers["X-AlphaVantage-Api-Key"] = state.settings.alphaVantageApiKey;
@@ -1362,12 +1373,38 @@
       return message;
     }
 
+    async function readJsonResponse(response, path) {
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        const isHtml = /^\s*<!doctype\s+html|^\s*<html/i.test(text);
+        if (isHtml) {
+          throw new Error(`API 回傳 HTML（${path}）。請從 http://localhost:18080/app 開啟網站，不要直接開啟 frontend/index.html。`);
+        }
+        throw new Error(`API 回傳的內容不是有效 JSON（${path}，HTTP ${response.status}）。`);
+      }
+    }
+
+    async function httpError(response, path) {
+      let detail = "";
+      try {
+        const body = await readJsonResponse(response, path);
+        detail = body?.detail || body?.message || body?.error || "";
+      } catch {
+        // Keep the status-only fallback when the error body is not JSON.
+      }
+      const error = new Error(`HTTP ${response.status} ${path}${detail ? `：${detail}` : ""}`);
+      error.status = response.status;
+      return error;
+    }
+
     async function apiGet(path) {
       const response = await fetch(`${state.settings.apiBaseUrl}${path}`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
-      return unwrap(await response.json());
+      if (!response.ok) throw await httpError(response, path);
+      return unwrap(await readJsonResponse(response, path));
     }
 
     async function apiGetOptional(path) {
@@ -1375,7 +1412,7 @@
         throw new Error(explainFetchFailure(error, path));
       });
       if (!response.ok) return null;
-      return unwrap(await response.json());
+      return unwrap(await readJsonResponse(response, path));
     }
 
     async function apiPost(path, body) {
@@ -1387,8 +1424,8 @@
       }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
-      return unwrap(await response.json());
+      if (!response.ok) throw await httpError(response, path);
+      return unwrap(await readJsonResponse(response, path));
     }
 
     async function apiPut(path, body) {
@@ -1400,14 +1437,23 @@
       }).catch(error => {
         throw new Error(explainFetchFailure(error, path));
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
-      return unwrap(await response.json());
+      if (!response.ok) throw await httpError(response, path);
+      return unwrap(await readJsonResponse(response, path));
     }
 
     async function refreshHealthStatus(baseUrlOverride) {
-      const baseUrl = (baseUrlOverride || state.settings.apiBaseUrl || "").replace(/\/+$/, "");
-      const response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
-      const body = await response.json().catch(() => ({}));
+      let baseUrl = (baseUrlOverride || state.settings.apiBaseUrl || "/api/v1").trim().replace(/\/+$/, "");
+      if (!baseUrl || baseUrl === "/") baseUrl = "/api/v1";
+      let response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
+      let body;
+      try {
+        body = await readJsonResponse(response, `${baseUrl}/health`);
+      } catch (error) {
+        if (location.protocol === "file:" || baseUrl === "/api/v1") throw error;
+        baseUrl = "/api/v1";
+        response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
+        body = await readJsonResponse(response, `${baseUrl}/health`);
+      }
       state.settings.health = response.ok ? `OK ${response.status}` : `HTTP ${response.status}`;
       state.settings.providerStatus = body.providers || body.data?.providers || null;
       state.settings.apiBaseUrl = baseUrl;
@@ -1431,7 +1477,9 @@
         state.settings.hasStoredOpenAiApiKey = false;
         state.settings.hasStoredGeminiApiKey = false;
         state.settings.hasStoredDeepSeekApiKey = false;
-        state.settings.hasStoredMimoApiKey = false;
+        state.settings.customProviderName = "";
+        state.settings.hasStoredCustomProviderApiKey = false;
+        state.settings.customProviderUrl = "";
         state.settings.accountSettingsUpdatedAt = "";
       }
       saveSettings();
@@ -1447,8 +1495,8 @@
 
     function applyProviderFromAuth() {
       const provider = state.settings.authToken
-        ? (state.settings.preferredProvider || (state.settings.mimoApiKey ? "MIMO" : state.settings.deepSeekApiKey ? "DEEPSEEK" : state.settings.geminiApiKey ? "GEMINI" : state.settings.openAiApiKey ? "OPENAI" : state.provider || "OPENAI"))
-        : state.settings.mimoApiKey ? "MIMO" : state.settings.deepSeekApiKey ? "DEEPSEEK" : state.settings.geminiApiKey ? "GEMINI" : state.settings.openAiApiKey ? "OPENAI" : state.provider;
+        ? (state.settings.preferredProvider || (state.settings.deepSeekApiKey ? "DEEPSEEK" : state.settings.geminiApiKey ? "GEMINI" : state.settings.openAiApiKey ? "OPENAI" : state.provider || "OPENAI"))
+        : state.settings.deepSeekApiKey ? "DEEPSEEK" : state.settings.geminiApiKey ? "GEMINI" : state.settings.openAiApiKey ? "OPENAI" : state.provider;
       setProvider(provider);
     }
 
@@ -1458,9 +1506,7 @@
         ? ["hasOpenAiApiKey", "openAiApiKey"]
         : kind === "GEMINI"
           ? ["hasGeminiApiKey", "geminiApiKey"]
-          : kind === "DEEPSEEK"
-            ? ["hasDeepSeekApiKey", "deepSeekApiKey"]
-            : ["hasMimoApiKey", "mimoApiKey"];
+          : ["hasDeepSeekApiKey", "deepSeekApiKey"];
       for (const field of fields) {
         if (Object.prototype.hasOwnProperty.call(data || {}, field)) {
           const value = data[field];
@@ -1477,12 +1523,14 @@
       state.settings.hasStoredOpenAiApiKey = readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, false);
       state.settings.hasStoredGeminiApiKey = readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, false);
       state.settings.hasStoredDeepSeekApiKey = readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, false);
-      state.settings.hasStoredMimoApiKey = readStoredProviderKey(data, "MIMO", state.settings.hasStoredMimoApiKey, false);
+      state.settings.customProviderName = data.customProviderName || "";
+      state.settings.hasStoredCustomProviderApiKey = !!data.hasCustomProviderApiKey;
+      state.settings.customProviderUrl = data.customProviderUrl || "";
       state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
       state.settings.openAiApiKey = "";
       state.settings.geminiApiKey = "";
       state.settings.deepSeekApiKey = "";
-      state.settings.mimoApiKey = "";
+      state.settings.customProviderApiKey = "";
       saveSettings();
       applyProviderFromAuth();
     }
@@ -1492,38 +1540,44 @@
       const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
       const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
       const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
-      const mimoApiKey = document.getElementById("mimoApiKey").value.trim();
-      const preferredProvider = mimoApiKey ? "MIMO" : deepSeekApiKey ? "DEEPSEEK" : geminiApiKey ? "GEMINI" : openAiApiKey ? "OPENAI" : state.provider;
+      const customProviderName = document.getElementById("customProviderName").value.trim();
+      const customProviderApiKey = document.getElementById("customProviderApiKey").value.trim();
+      const customProviderUrl = document.getElementById("customProviderUrl").value.trim();
+      const customSubmitted = !!(customProviderName || customProviderApiKey || customProviderUrl);
+      const preferredProvider = customSubmitted ? "CUSTOM" : deepSeekApiKey ? "DEEPSEEK" : geminiApiKey ? "GEMINI" : openAiApiKey ? "OPENAI" : state.provider;
       const payload = {
         preferredProvider
       };
       if (openAiApiKey) payload.openAiApiKey = openAiApiKey;
       if (geminiApiKey) payload.geminiApiKey = geminiApiKey;
       if (deepSeekApiKey) payload.deepSeekApiKey = deepSeekApiKey;
-      if (mimoApiKey) payload.mimoApiKey = mimoApiKey;
+      if (customProviderName) payload.customProviderName = customProviderName;
+      if (customProviderApiKey) payload.customProviderApiKey = customProviderApiKey;
+      if (customProviderUrl) payload.customProviderUrl = customProviderUrl;
       const data = await apiPut("/account/settings", payload);
       state.settings.preferredProvider = data.preferredProvider || "";
       state.settings.hasStoredOpenAiApiKey = readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, !!openAiApiKey);
       state.settings.hasStoredGeminiApiKey = readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, !!geminiApiKey);
       state.settings.hasStoredDeepSeekApiKey = readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, !!deepSeekApiKey);
-      state.settings.hasStoredMimoApiKey = readStoredProviderKey(data, "MIMO", state.settings.hasStoredMimoApiKey, !!mimoApiKey);
+      state.settings.customProviderName = data.customProviderName || "";
+      state.settings.hasStoredCustomProviderApiKey = !!data.hasCustomProviderApiKey || !!customProviderApiKey;
+      state.settings.customProviderUrl = data.customProviderUrl || "";
       state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
       state.settings.openAiApiKey = "";
       state.settings.geminiApiKey = "";
       state.settings.deepSeekApiKey = "";
-      state.settings.mimoApiKey = "";
+      state.settings.customProviderApiKey = "";
       setProvider(data.preferredProvider || preferredProvider);
       saveSettings();
       applyProviderFromAuth();
-      return { openAiApiKeySaved: !!openAiApiKey, geminiApiKeySaved: !!geminiApiKey, deepSeekApiKeySaved: !!deepSeekApiKey, mimoApiKeySaved: !!mimoApiKey, preferredProvider };
+      return { openAiApiKeySaved: !!openAiApiKey, geminiApiKeySaved: !!geminiApiKey, deepSeekApiKeySaved: !!deepSeekApiKey, customProviderSaved: customSubmitted, preferredProvider };
     }
 
     async function clearProviderKey(kind) {
       const config = {
         OPENAI: { label: "OpenAI", buttonId: "clearOpenAiKey", inputId: "openAiApiKey", localKey: "openAiApiKey", storedKey: "hasStoredOpenAiApiKey" },
         GEMINI: { label: "Gemini", buttonId: "clearGeminiKey", inputId: "geminiApiKey", localKey: "geminiApiKey", storedKey: "hasStoredGeminiApiKey" },
-        DEEPSEEK: { label: "DeepSeek", buttonId: "clearDeepSeekKey", inputId: "deepSeekApiKey", localKey: "deepSeekApiKey", storedKey: "hasStoredDeepSeekApiKey" },
-        MIMO: { label: "MIMO", buttonId: "clearMimoKey", inputId: "mimoApiKey", localKey: "mimoApiKey", storedKey: "hasStoredMimoApiKey" }
+        DEEPSEEK: { label: "DeepSeek", buttonId: "clearDeepSeekKey", inputId: "deepSeekApiKey", localKey: "deepSeekApiKey", storedKey: "hasStoredDeepSeekApiKey" }
       }[kind];
       if (!config) return;
       const button = document.getElementById(config.buttonId);
@@ -1543,7 +1597,6 @@
           state.settings.hasStoredOpenAiApiKey = kind === "OPENAI" ? false : readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, false);
           state.settings.hasStoredGeminiApiKey = kind === "GEMINI" ? false : readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, false);
           state.settings.hasStoredDeepSeekApiKey = kind === "DEEPSEEK" ? false : readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, false);
-          state.settings.hasStoredMimoApiKey = kind === "MIMO" ? false : readStoredProviderKey(data, "MIMO", state.settings.hasStoredMimoApiKey, false);
           state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
           input.value = "";
           state.settings[config.localKey] = "";
@@ -1564,14 +1617,11 @@
       }
     }
 
-    function persistLocalApiKeys(openAiApiKey, geminiApiKey, deepSeekApiKey, mimoApiKey) {
+    function persistLocalApiKeys(openAiApiKey, geminiApiKey, deepSeekApiKey) {
       if (openAiApiKey) state.settings.openAiApiKey = openAiApiKey;
       if (geminiApiKey) state.settings.geminiApiKey = geminiApiKey;
       if (deepSeekApiKey) state.settings.deepSeekApiKey = deepSeekApiKey;
-      if (mimoApiKey) state.settings.mimoApiKey = mimoApiKey;
-      if (mimoApiKey) {
-        setProvider("MIMO");
-      } else if (deepSeekApiKey) {
+      if (deepSeekApiKey) {
         setProvider("DEEPSEEK");
       } else if (geminiApiKey) {
         setProvider("GEMINI");
@@ -1580,7 +1630,7 @@
       }
       state.settings.preferredProvider = state.provider;
       saveSettings();
-      return !!(openAiApiKey || geminiApiKey || deepSeekApiKey || mimoApiKey);
+      return !!(openAiApiKey || geminiApiKey || deepSeekApiKey);
     }
 
     async function saveUiSettings() {
@@ -1591,11 +1641,10 @@
         const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
         const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
         const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
-        const mimoApiKey = document.getElementById("mimoApiKey").value.trim();
         try {
           const saved = await saveAccountSettings();
-          if (saved?.mimoApiKeySaved) {
-            setAuthMessage("MIMO Key 已儲存到後端，並切換偏好 AI 為 MIMO。", false);
+          if (saved?.customProviderSaved) {
+            setAuthMessage("自訂供應商已加密儲存並設為偏好 AI。", false);
           } else if (saved?.deepSeekApiKeySaved) {
             setAuthMessage("DeepSeek Key 已儲存到後端，並切換偏好 AI 為 DEEPSEEK。", false);
           } else if (saved?.geminiApiKeySaved) {
@@ -1606,7 +1655,7 @@
             setAuthMessage(`帳號設定已儲存到後端，目前偏好 AI：${state.provider}。`, false);
           }
         } catch (error) {
-          if (persistLocalApiKeys(openAiApiKey, geminiApiKey, deepSeekApiKey, mimoApiKey)) {
+          if (persistLocalApiKeys(openAiApiKey, geminiApiKey, deepSeekApiKey)) {
             setAuthMessage(`後端帳號設定暫時無法儲存，已先改用本機 Key header（${state.provider}）。原因：${error.message}`, false);
           } else {
             setAuthMessage(`帳號設定儲存失敗：${error.message}`, true);
@@ -1616,13 +1665,14 @@
         const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
         const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
         const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
-        const mimoApiKey = document.getElementById("mimoApiKey").value.trim();
+        const customSubmitted = document.getElementById("customProviderName").value.trim()
+          || document.getElementById("customProviderApiKey").value.trim()
+          || document.getElementById("customProviderUrl").value.trim();
         state.settings.openAiApiKey = openAiApiKey;
         state.settings.geminiApiKey = geminiApiKey;
         state.settings.deepSeekApiKey = deepSeekApiKey;
-        state.settings.mimoApiKey = mimoApiKey;
-        if (mimoApiKey) {
-          setProvider("MIMO");
+        if (customSubmitted) {
+          setAuthMessage("自訂供應商包含敏感設定，請先登入帳號再儲存。", true);
         } else if (deepSeekApiKey) {
           setProvider("DEEPSEEK");
         } else if (geminiApiKey) {
@@ -1632,9 +1682,7 @@
         }
         applyProviderFromAuth();
         saveSettings();
-        if (mimoApiKey) {
-          setAuthMessage("MIMO Key 已儲存在本機，並切換 AI 模型為 MIMO。", false);
-        } else if (deepSeekApiKey) {
+        if (deepSeekApiKey) {
           setAuthMessage("DeepSeek Key 已儲存在本機，並切換 AI 模型為 DEEPSEEK。", false);
         } else if (geminiApiKey) {
           setAuthMessage("Gemini Key 已儲存在本機，並切換 AI 模型為 GEMINI。", false);
@@ -1651,11 +1699,7 @@
       const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
       const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
       const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
-      const mimoApiKey = document.getElementById("mimoApiKey").value.trim();
-      if (mimoApiKey) {
-        setProvider("MIMO");
-        setAuthMessage("已偵測到 MIMO Key，尚未儲存。請按「儲存 AI Key」套用。", false);
-      } else if (deepSeekApiKey) {
+      if (deepSeekApiKey) {
         setProvider("DEEPSEEK");
         setAuthMessage("已偵測到 DeepSeek Key，尚未儲存。請按「儲存 AI Key」套用。", false);
       } else if (geminiApiKey) {
@@ -1682,6 +1726,14 @@
         setAuthMessage("請輸入 email 與密碼。", true);
         return;
       }
+      if (!email.includes("@")) {
+        setAuthMessage("Email 格式不正確，必須包含 @。", true);
+        return;
+      }
+      if (path.includes("register") && (password.length < 12 || password.length > 200)) {
+        setAuthMessage("註冊密碼必須為 12–200 個字元。", true);
+        return;
+      }
       const actionButton = path.includes("register") ? document.getElementById("registerAuth") : document.getElementById("loginAuth");
       setBusy(actionButton, true, path.includes("register") ? "註冊中..." : "登入中...");
       try {
@@ -1692,7 +1744,15 @@
         setAuthMessage(`${path.includes("register") ? "註冊" : "登入"}成功：${result.user.email}`, false);
         renderSettings();
       } catch (error) {
-        setAuthMessage(`${path.includes("register") ? "註冊" : "登入"}失敗：${error.message}`, true);
+        if (!path.includes("register") && error.status === 401) {
+          setAuthMessage("登入失敗：Email 或密碼不正確。若尚未建立帳號，請先按註冊；Google 建立的帳號不能在此使用密碼登入。", true);
+        } else if (path.includes("register") && error.status === 409) {
+          setAuthMessage("註冊失敗：此 Email 已存在，請改用登入。", true);
+        } else if (path.includes("register") && error.status === 400) {
+          setAuthMessage("註冊失敗：請確認 Email 格式正確，且密碼為 12–200 個字元。", true);
+        } else {
+          setAuthMessage(`${path.includes("register") ? "註冊" : "登入"}失敗：${error.message}`, true);
+        }
       } finally {
         setBusy(actionButton, false);
       }
@@ -1732,7 +1792,6 @@
       state.settings.openAiApiKey = "";
       state.settings.geminiApiKey = "";
       state.settings.deepSeekApiKey = "";
-      state.settings.mimoApiKey = "";
       state.provider = "OPENAI";
       setAuthMessage("已登出。", false);
       renderSettings();
@@ -2196,8 +2255,8 @@
         if (state.failedProviders.includes(provider)) {
           return { provider, failed: true, error: "模型回應逾時，已從共識分數排除。" };
         }
-        const score = Math.max(35, Math.min(90, 66 + seed % 8 + i * 2 - (provider === "DEEPSEEK" ? 5 : provider === "MIMO" ? 2 : 0)));
-        const risk = score < 62 || (provider === "DEEPSEEK" || provider === "MIMO") && s.changePct < 0 ? "HIGH" : "MEDIUM";
+        const score = Math.max(35, Math.min(90, 66 + seed % 8 + i * 2 - (provider === "DEEPSEEK" ? 5 : 0)));
+        const risk = score < 62 || provider === "DEEPSEEK" && s.changePct < 0 ? "HIGH" : "MEDIUM";
         return {
           provider,
           trend: score > 72 ? "偏多" : score > 62 ? "中性偏多" : "震盪",
@@ -2234,13 +2293,11 @@
       if (value === "mock-ai:no-gemini-key") return "後端沒有收到 Gemini Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
       if (value === "mock-ai:no-openai-key") return "後端沒有收到 OpenAI Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
       if (value === "mock-ai:no-deepseek-key") return "後端沒有收到 DeepSeek Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
-      if (value === "mock-ai:no-mimo-key") return "後端沒有收到 MIMO Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
       if (value === "mock-ai:openai-http-401-invalid_api_key") return "OpenAI 拒絕目前的 API Key：請到 local-env.cmd 或網頁設定換成有效的 OpenAI platform key，然後重啟 backend。";
       if (value === "mock-ai:openai-http-429-insufficient_quota") return "OpenAI Key 可被辨識，但帳號或 project 額度不足，請確認 billing / credits。";
       if (value === "mock-ai:gemini-live-failed") return "Gemini 真實呼叫失敗，可能是 backend 尚未重啟、Gemini endpoint/model 錯誤、網路被擋或 Key 無效。";
       if (value === "mock-ai:openai-live-failed") return "OpenAI 真實呼叫失敗，可能是模型名稱、網路、額度或 Key 驗證問題。";
       if (value === "mock-ai:deepseek-live-failed") return "DeepSeek 真實呼叫失敗，已退回 mock。";
-      if (value === "mock-ai:mimo-live-failed") return "MIMO 真實呼叫失敗，可能是 backend 尚未重啟、MIMO endpoint/model 錯誤、網路被擋或 Key 無效。";
       if (value.startsWith("mock-ai")) return "目前使用 mock-ai 回落結果，通常是尚未設定 API key 或真實呼叫失敗。";
       return `目前使用 ${value}。`;
     }
@@ -2541,6 +2598,7 @@
       renderSettings();
       drawChart(s);
       document.getElementById("chatAnswer").textContent = `目前 ${s.symbol} 的 5 日 ${analysisSource} 上漲機率為 ${Math.round(s.prediction.upProbability * 100)}%，主要要看 MA20 是否失守與波動是否擴大。`;
+      renderChatChart(null);
       document.getElementById("chatEvidence").innerHTML = renderEvidence(evidence, {
         empty: state.settings.mode === "real"
           ? "目前沒有 AI 問答可引用的文件證據。可先匯入新聞或公告後再提問。"
@@ -2668,12 +2726,6 @@
           localKey: "deepSeekApiKey",
           storedKey: "hasStoredDeepSeekApiKey",
           payloadKey: "deepSeekApiKey"
-        },
-        MIMO: {
-          label: "MIMO API Key",
-          localKey: "mimoApiKey",
-          storedKey: "hasStoredMimoApiKey",
-          payloadKey: "mimoApiKey"
         }
       }[kind];
     }
@@ -2699,7 +2751,6 @@
           state.settings.hasStoredOpenAiApiKey = readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, kind === "OPENAI");
           state.settings.hasStoredGeminiApiKey = readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, kind === "GEMINI");
           state.settings.hasStoredDeepSeekApiKey = readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, kind === "DEEPSEEK");
-          state.settings.hasStoredMimoApiKey = readStoredProviderKey(data, "MIMO", state.settings.hasStoredMimoApiKey, kind === "MIMO");
           state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
           state.settings[config.localKey] = "";
         } else {
@@ -2749,6 +2800,48 @@
       document.querySelectorAll("[data-question]").forEach(button => button.disabled = busy);
       document.getElementById("chatInput").disabled = busy;
       if (busy) document.getElementById("chatAnswer").textContent = "AI 回覆產生中...";
+      if (busy) document.getElementById("chatChart").classList.add("hidden");
+    }
+
+    function renderChatChart(chart) {
+      const container = document.getElementById("chatChart");
+      const values = Array.isArray(chart?.values) ? chart.values.map(Number).filter(Number.isFinite) : [];
+      if (!chart || values.length < 2) {
+        container.classList.add("hidden");
+        container.innerHTML = "";
+        return;
+      }
+      const width = 700;
+      const height = 210;
+      const padding = 36;
+      const minimum = Math.min(...values);
+      const maximum = Math.max(...values);
+      const range = maximum - minimum || 1;
+      const points = values.map((value, index) => {
+        const x = padding + index * ((width - padding * 2) / Math.max(1, values.length - 1));
+        const y = height - padding - ((value - minimum) / range) * (height - padding * 2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      const title = escapeHtml(chart.title || "數值走勢");
+      const unit = escapeHtml(chart.unit || "");
+      container.innerHTML = `
+        <h3>${title}</h3>
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">
+          <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#35516b" />
+          <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#35516b" />
+          <polyline points="${points}" fill="none" stroke="#5ff3d2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+          <text class="axis-label" x="${padding}" y="20">${maximum.toFixed(2)} ${unit}</text>
+          <text class="axis-label" x="${padding}" y="${height - 10}">${minimum.toFixed(2)} ${unit}</text>
+        </svg>`;
+      container.classList.remove("hidden");
+    }
+
+    function localChartForQuestion(stock, message) {
+      const requested = /指數|價格|走勢|數值|漲跌|報酬|比較|圖表|chart|trend/i.test(message || "");
+      const values = Array.isArray(stock?.prices) ? stock.prices.slice(-30) : [];
+      return requested && values.length > 1
+        ? { type: "line", title: `${stock.symbol} 最近價格走勢`, values, unit: stock.currency || "" }
+        : null;
     }
     function divergence(results) {
       if (results.length < 2) return "UNKNOWN";
@@ -2788,16 +2881,19 @@
           state.realEvidence = evidence;
           const source = data.source || "openai-responses";
           document.getElementById("chatAnswer").textContent = `[${source}] ${data.message || data.answer || ""}`;
+          renderChatChart(data.chart);
           document.getElementById("chatEvidence").innerHTML = renderEvidence(evidence);
           return;
         }
         document.getElementById("chatAnswer").textContent = `[mock-ai] 根據目前模擬資料：${message} 重點是價格是否守住 MA20、模型分歧是否擴大，以及是否有重大新聞或財報事件。`;
+        renderChatChart(localChartForQuestion(s, message));
         document.getElementById("chatEvidence").innerHTML = renderEvidence([]);
       } catch (error) {
           state.settings.lastDataLoad = `AI 問答失敗：${error.message}`;
           saveSettings();
           renderSettings();
           document.getElementById("chatAnswer").textContent = `[mock-ai] 根據目前模擬資料：${message} 重點是價格是否守住 MA20、模型分歧是否擴大，以及是否有重大新聞或財報事件。`;
+          renderChatChart(localChartForQuestion(s, message));
           document.getElementById("chatEvidence").innerHTML = renderEvidence(state.realEvidence || []);
       } finally {
         setChatBusy(false);
@@ -2925,14 +3021,11 @@
       const yahooFinanceNewsConfigured = providers ? providers.yahooFinanceNewsConfigured : null;
       const yahooFinanceFinancialsConfigured = providers ? providers.yahooFinanceFinancialsConfigured : null;
       const deepSeekConfigured = providers ? providers.deepSeekConfigured : null;
-      const mimoConfigured = providers ? providers.mimoConfigured : null;
       const loggedIn = !!state.settings.authToken;
       const localGeminiConfigured = loggedIn ? (state.settings.hasStoredGeminiApiKey || !!state.settings.geminiApiKey) : !!state.settings.geminiApiKey;
       const geminiConfigured = providers?.geminiConfigured || localGeminiConfigured;
       const localDeepSeekConfigured = loggedIn ? (state.settings.hasStoredDeepSeekApiKey || !!state.settings.deepSeekApiKey) : !!state.settings.deepSeekApiKey;
       const effectiveDeepSeekConfigured = deepSeekConfigured || localDeepSeekConfigured;
-      const localMimoConfigured = loggedIn ? (state.settings.hasStoredMimoApiKey || !!state.settings.mimoApiKey) : !!state.settings.mimoApiKey;
-      const effectiveMimoConfigured = mimoConfigured || localMimoConfigured;
       const alphaVantageNewsConfigured = providers ? (providers.alphaVantageNewsConfigured || localAlphaVantageConfigured) : localAlphaVantageConfigured;
       const usNewsConfigured = !!alphaVantageNewsConfigured || !!fmpNewsConfigured || !!yahooFinanceNewsConfigured;
       const usNewsSourceLabel = alphaVantageNewsConfigured ? "Alpha 就緒" : fmpNewsConfigured ? "FMP 就緒" : yahooFinanceNewsConfigured ? "Yahoo 就緒" : "缺少";
@@ -2961,15 +3054,16 @@
       document.getElementById("openAiApiKey").value = state.settings.authToken ? "" : (state.settings.openAiApiKey || "");
       document.getElementById("geminiApiKey").value = state.settings.authToken ? "" : (state.settings.geminiApiKey || "");
       document.getElementById("deepSeekApiKey").value = state.settings.authToken ? "" : (state.settings.deepSeekApiKey || "");
-      document.getElementById("mimoApiKey").value = state.settings.authToken ? "" : (state.settings.mimoApiKey || "");
+      document.getElementById("customProviderName").value = state.settings.customProviderName || "";
+      document.getElementById("customProviderApiKey").value = "";
+      document.getElementById("customProviderUrl").value = state.settings.customProviderUrl || "";
+      document.querySelector('#provider option[value="CUSTOM"]').textContent = state.settings.customProviderName || "自訂供應商";
       document.getElementById("openAiApiKey").placeholder = state.settings.authToken && state.settings.hasStoredOpenAiApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "OpenAI API Key";
       document.getElementById("geminiApiKey").placeholder = state.settings.authToken && state.settings.hasStoredGeminiApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "Gemini API Key";
       document.getElementById("deepSeekApiKey").placeholder = state.settings.authToken && state.settings.hasStoredDeepSeekApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "DeepSeek API Key";
-      document.getElementById("mimoApiKey").placeholder = state.settings.authToken && state.settings.hasStoredMimoApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "MIMO API Key";
       document.getElementById("clearOpenAiKey").textContent = loggedIn && state.settings.hasStoredOpenAiApiKey ? "清除後端 OpenAI Key" : "清除本機 OpenAI Key";
       document.getElementById("clearGeminiKey").textContent = loggedIn && state.settings.hasStoredGeminiApiKey ? "清除後端 Gemini Key" : "清除本機 Gemini Key";
       document.getElementById("clearDeepSeekKey").textContent = loggedIn && state.settings.hasStoredDeepSeekApiKey ? "清除後端 DeepSeek Key" : "清除本機 DeepSeek Key";
-      document.getElementById("clearMimoKey").textContent = loggedIn && state.settings.hasStoredMimoApiKey ? "清除後端 MIMO Key" : "清除本機 MIMO Key";
       document.getElementById("authEmail").value = state.settings.authUserEmail || document.getElementById("authEmail").value;
       const authStatus = document.getElementById("authStatus");
       authStatus.textContent = loggedIn ? state.settings.authUserEmail : "訪客";
@@ -2983,7 +3077,8 @@
         "OpenAI Key": providerKeyControl("OPENAI", statusPill(loggedIn ? (state.settings.hasStoredOpenAiApiKey ? "已儲存" : state.settings.openAiApiKey ? "本機" : "空白") : (state.settings.openAiApiKey ? "本機" : "空白"), (state.settings.hasStoredOpenAiApiKey || state.settings.openAiApiKey) ? "good" : "warn"), !!(state.settings.hasStoredOpenAiApiKey || state.settings.openAiApiKey)),
         "Gemini Key": providerKeyControl("GEMINI", statusPill(loggedIn ? (state.settings.hasStoredGeminiApiKey ? "已儲存" : state.settings.geminiApiKey ? "本機" : "空白") : (state.settings.geminiApiKey ? "本機" : "空白"), (state.settings.hasStoredGeminiApiKey || state.settings.geminiApiKey) ? "good" : "warn"), !!(state.settings.hasStoredGeminiApiKey || state.settings.geminiApiKey)),
         "DeepSeek Key": providerKeyControl("DEEPSEEK", statusPill(loggedIn ? (state.settings.hasStoredDeepSeekApiKey ? "已儲存" : state.settings.deepSeekApiKey ? "本機" : "空白") : (state.settings.deepSeekApiKey ? "本機" : "空白"), (state.settings.hasStoredDeepSeekApiKey || state.settings.deepSeekApiKey) ? "good" : "warn"), !!(state.settings.hasStoredDeepSeekApiKey || state.settings.deepSeekApiKey)),
-        "MIMO Key": providerKeyControl("MIMO", statusPill(loggedIn ? (state.settings.hasStoredMimoApiKey ? "已儲存" : state.settings.mimoApiKey ? "本機" : "空白") : (state.settings.mimoApiKey ? "本機" : "空白"), (state.settings.hasStoredMimoApiKey || state.settings.mimoApiKey) ? "good" : "warn"), !!(state.settings.hasStoredMimoApiKey || state.settings.mimoApiKey)),
+        "自訂供應商": statusPill(state.settings.customProviderName || "未設定", state.settings.hasStoredCustomProviderApiKey && state.settings.customProviderUrl ? "good" : "warn"),
+        "自訂供應商網址": state.settings.customProviderUrl || "未設定",
         "偏好 AI": state.settings.preferredProvider || state.provider,
         "帳號設定更新時間": state.settings.accountSettingsUpdatedAt || "尚未儲存",
         "最近文件匯入": state.settings.lastDocumentImport || "尚未匯入文件",
@@ -2995,8 +3090,6 @@
         "Gemini 模型": providers?.geminiModel || "未知",
         "DeepSeek 設定": statusPill(effectiveDeepSeekConfigured ? "ready" : deepSeekConfigured === null || deepSeekConfigured === undefined ? "unknown" : "missing", effectiveDeepSeekConfigured ? "good" : deepSeekConfigured === null || deepSeekConfigured === undefined ? "" : "warn"),
         "DeepSeek 模型": providers?.deepSeekModel || "未知",
-        "MIMO 設定": statusPill(effectiveMimoConfigured ? "ready" : mimoConfigured === null || mimoConfigured === undefined ? "unknown" : "missing", effectiveMimoConfigured ? "good" : mimoConfigured === null || mimoConfigured === undefined ? "" : "warn"),
-        "MIMO 模型": providers?.mimoModel || "未知",
         "FinMind 台股來源": statusPill(finMindConfigured === null || finMindConfigured === undefined ? "unknown" : finMindConfigured ? "ready" : "missing", finMindConfigured === null || finMindConfigured === undefined ? "" : finMindConfigured ? "good" : "warn"),
         "FinMind Token": sourceKeyControl(
           "finmind",
@@ -3424,7 +3517,6 @@
     document.getElementById("openAiApiKey").addEventListener("input", previewApiKeyInput);
     document.getElementById("geminiApiKey").addEventListener("input", previewApiKeyInput);
     document.getElementById("deepSeekApiKey").addEventListener("input", previewApiKeyInput);
-    document.getElementById("mimoApiKey").addEventListener("input", previewApiKeyInput);
     document.getElementById("openAiApiKey").addEventListener("keydown", e => {
       if (e.key === "Enter") saveUiSettings();
     });
@@ -3434,9 +3526,6 @@
     document.getElementById("deepSeekApiKey").addEventListener("keydown", e => {
       if (e.key === "Enter") saveUiSettings();
     });
-    document.getElementById("mimoApiKey").addEventListener("keydown", e => {
-      if (e.key === "Enter") saveUiSettings();
-    });
     document.getElementById("registerAuth").addEventListener("click", () => submitAuth("/auth/register"));
     document.getElementById("loginAuth").addEventListener("click", () => submitAuth("/auth/login"));
     document.getElementById("logoutAuth").addEventListener("click", logoutAuth);
@@ -3444,7 +3533,6 @@
     document.getElementById("clearOpenAiKey").addEventListener("click", () => clearProviderKey("OPENAI"));
     document.getElementById("clearGeminiKey").addEventListener("click", () => clearProviderKey("GEMINI"));
     document.getElementById("clearDeepSeekKey").addEventListener("click", () => clearProviderKey("DEEPSEEK"));
-    document.getElementById("clearMimoKey").addEventListener("click", () => clearProviderKey("MIMO"));
     document.getElementById("keyEntrySave").addEventListener("click", () => {
       closeKeyEntryModal(document.getElementById("keyEntryInput").value);
     });
