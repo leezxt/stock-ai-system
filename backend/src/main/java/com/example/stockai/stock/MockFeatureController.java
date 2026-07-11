@@ -26,7 +26,7 @@ import jakarta.servlet.http.HttpServletRequest;
 @RequestMapping("/api/v1")
 public class MockFeatureController {
     private static final List<String> DEFAULT_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK");
-    private static final List<String> ALLOWED_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK");
+    private static final List<String> ALLOWED_PROVIDERS = List.of("OPENAI", "GEMINI", "DEEPSEEK", "CUSTOM");
 
     private final AiProviderAdapter aiProviderAdapter;
     private final RagContextService ragContextService;

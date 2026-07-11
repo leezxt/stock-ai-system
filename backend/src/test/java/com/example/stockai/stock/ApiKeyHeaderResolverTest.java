@@ -41,7 +41,7 @@ class ApiKeyHeaderResolverTest {
         AuthService.AuthResult auth = authService.register("deepseek@example.test", "Passw0rd!-secure");
         accountSettingsService.update(
             auth.user().email(),
-            new AccountSettingsService.AccountSettingsUpdate("DEEPSEEK", null, null, "stored-deepseek")
+            new AccountSettingsService.AccountSettingsUpdate("DEEPSEEK", null, null, "stored-deepseek", null, null, null)
         );
         ApiKeyHeaderResolver resolver = new ApiKeyHeaderResolver(authService, accountSettingsService);
         MockHttpServletRequest request = new MockHttpServletRequest();

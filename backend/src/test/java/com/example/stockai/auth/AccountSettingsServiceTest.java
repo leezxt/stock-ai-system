@@ -21,7 +21,7 @@ class AccountSettingsServiceTest {
 
         AccountSettingsService.AccountSettingsView saved = service.update(
             "demo@example.com",
-            new AccountSettingsService.AccountSettingsUpdate("DEEPSEEK", "openai-secret", "gemini-secret", "deepseek-secret")
+            new AccountSettingsService.AccountSettingsUpdate("DEEPSEEK", "openai-secret", "gemini-secret", "deepseek-secret", null, null, null)
         );
         AccountSettingsService.AccountSettingsView loaded = service.get("demo@example.com");
 
@@ -39,16 +39,35 @@ class AccountSettingsServiceTest {
     @Test
     void keepsExistingKeysWhenUpdateOmitsThem() {
         AccountSettingsService service = new AccountSettingsService(tempDir);
-        service.update("demo@example.com", new AccountSettingsService.AccountSettingsUpdate("OPENAI", "openai-secret", "", "deepseek-secret"));
+        service.update("demo@example.com", new AccountSettingsService.AccountSettingsUpdate("OPENAI", "openai-secret", "", "deepseek-secret", null, null, null));
 
         AccountSettingsService.AccountSettingsView updated = service.update(
             "demo@example.com",
-            new AccountSettingsService.AccountSettingsUpdate("GEMINI", null, null, null)
+            new AccountSettingsService.AccountSettingsUpdate("GEMINI", null, null, null, null, null, null)
         );
 
         assertThat(updated.preferredProvider()).isEqualTo("GEMINI");
         assertThat(service.openAiApiKey("demo@example.com")).isEqualTo("openai-secret");
         assertThat(service.deepSeekApiKey("demo@example.com")).isEqualTo("deepseek-secret");
+    }
+
+    @Test
+    void encryptsAndReturnsCustomProviderMetadataWithoutReturningKey() throws Exception {
+        AccountSettingsService service = new AccountSettingsService(tempDir);
+        AccountSettingsService.AccountSettingsView view = service.update(
+            "custom@example.com",
+            new AccountSettingsService.AccountSettingsUpdate(
+                "CUSTOM", null, null, null, "my-model", "custom-secret", "https://api.openai.com/v1/chat/completions"
+            )
+        );
+
+        assertThat(view.preferredProvider()).isEqualTo("CUSTOM");
+        assertThat(view.customProviderName()).isEqualTo("my-model");
+        assertThat(view.customProviderUrl()).isEqualTo("https://api.openai.com/v1/chat/completions");
+        assertThat(view.hasCustomProviderApiKey()).isTrue();
+        assertThat(service.customProviderSettings("custom@example.com").apiKey()).isEqualTo("custom-secret");
+        String persisted = Files.readString(UserScopedFileLocator.resolve(tempDir, "", ".properties", "custom@example.com"));
+        assertThat(persisted).contains("enc\\:v1\\:").doesNotContain("custom-secret");
     }
 
     @Test
@@ -68,7 +87,7 @@ class AccountSettingsServiceTest {
         assertThat(loaded.preferredProvider()).isEqualTo("OPENAI");
         assertThat(service.openAiApiKey("legacy@example.com")).isEqualTo("legacy-openai");
 
-        service.update("legacy@example.com", new AccountSettingsService.AccountSettingsUpdate("GEMINI", null, "gemini-secret", null));
+        service.update("legacy@example.com", new AccountSettingsService.AccountSettingsUpdate("GEMINI", null, "gemini-secret", null, null, null, null));
 
         Path current = UserScopedFileLocator.resolve(tempDir, "", ".properties", "legacy@example.com");
         assertThat(current).exists();

@@ -792,6 +792,7 @@
           <option>CLAUDE</option>
           <option>GEMINI</option>
           <option>DEEPSEEK</option>
+          <option value="CUSTOM">自訂供應商</option>
         </select>
         <button id="addWatch">加入自選</button>
       </div>
@@ -1024,6 +1025,11 @@
             <button id="clearOpenAiKey">清除 OpenAI Key</button>
             <button id="clearGeminiKey">清除 Gemini Key</button>
             <button id="clearDeepSeekKey">清除 DeepSeek Key</button>
+          </div>
+          <div class="grid cols-3" style="margin-top:8px">
+            <input id="customProviderName" maxlength="80" placeholder="自訂名稱／模型名稱" aria-label="自訂供應商名稱" />
+            <input id="customProviderApiKey" placeholder="第三方 API Key（登入後加密儲存）" aria-label="第三方 API Key" />
+            <input id="customProviderUrl" type="url" maxlength="2048" placeholder="https://provider.example/v1/chat/completions" aria-label="第三方 API 請求位址" />
           </div>
             <p id="authMessage" class="footer-note">輸入 Key 後請按「儲存 AI Key」套用；未登入時儲存在本機，登入後儲存在後端帳號設定。留空儲存代表不覆蓋既有後端 key。</p>
         </div>
@@ -1299,10 +1305,14 @@
         hasStoredOpenAiApiKey: false,
         hasStoredGeminiApiKey: false,
         hasStoredDeepSeekApiKey: false,
+        customProviderName: "",
+        hasStoredCustomProviderApiKey: false,
+        customProviderUrl: "",
         accountSettingsUpdatedAt: "",
         openAiApiKey: "",
         geminiApiKey: "",
         deepSeekApiKey: "",
+        customProviderApiKey: "",
         alphaVantageApiKey: "",
         finMindApiToken: "",
         fmpApiKey: "",
@@ -1317,6 +1327,7 @@
         openAiApiKey: "",
         geminiApiKey: "",
         deepSeekApiKey: "",
+        customProviderApiKey: "",
         alphaVantageApiKey: "",
         finMindApiToken: "",
         fmpApiKey: ""
@@ -1437,6 +1448,9 @@
         state.settings.hasStoredOpenAiApiKey = false;
         state.settings.hasStoredGeminiApiKey = false;
         state.settings.hasStoredDeepSeekApiKey = false;
+        state.settings.customProviderName = "";
+        state.settings.hasStoredCustomProviderApiKey = false;
+        state.settings.customProviderUrl = "";
         state.settings.accountSettingsUpdatedAt = "";
       }
       saveSettings();
@@ -1480,10 +1494,14 @@
       state.settings.hasStoredOpenAiApiKey = readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, false);
       state.settings.hasStoredGeminiApiKey = readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, false);
       state.settings.hasStoredDeepSeekApiKey = readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, false);
+      state.settings.customProviderName = data.customProviderName || "";
+      state.settings.hasStoredCustomProviderApiKey = !!data.hasCustomProviderApiKey;
+      state.settings.customProviderUrl = data.customProviderUrl || "";
       state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
       state.settings.openAiApiKey = "";
       state.settings.geminiApiKey = "";
       state.settings.deepSeekApiKey = "";
+      state.settings.customProviderApiKey = "";
       saveSettings();
       applyProviderFromAuth();
     }
@@ -1493,26 +1511,37 @@
       const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
       const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
       const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
-      const preferredProvider = deepSeekApiKey ? "DEEPSEEK" : geminiApiKey ? "GEMINI" : openAiApiKey ? "OPENAI" : state.provider;
+      const customProviderName = document.getElementById("customProviderName").value.trim();
+      const customProviderApiKey = document.getElementById("customProviderApiKey").value.trim();
+      const customProviderUrl = document.getElementById("customProviderUrl").value.trim();
+      const customSubmitted = !!(customProviderName || customProviderApiKey || customProviderUrl);
+      const preferredProvider = customSubmitted ? "CUSTOM" : deepSeekApiKey ? "DEEPSEEK" : geminiApiKey ? "GEMINI" : openAiApiKey ? "OPENAI" : state.provider;
       const payload = {
         preferredProvider
       };
       if (openAiApiKey) payload.openAiApiKey = openAiApiKey;
       if (geminiApiKey) payload.geminiApiKey = geminiApiKey;
       if (deepSeekApiKey) payload.deepSeekApiKey = deepSeekApiKey;
+      if (customProviderName) payload.customProviderName = customProviderName;
+      if (customProviderApiKey) payload.customProviderApiKey = customProviderApiKey;
+      if (customProviderUrl) payload.customProviderUrl = customProviderUrl;
       const data = await apiPut("/account/settings", payload);
       state.settings.preferredProvider = data.preferredProvider || "";
       state.settings.hasStoredOpenAiApiKey = readStoredProviderKey(data, "OPENAI", state.settings.hasStoredOpenAiApiKey, !!openAiApiKey);
       state.settings.hasStoredGeminiApiKey = readStoredProviderKey(data, "GEMINI", state.settings.hasStoredGeminiApiKey, !!geminiApiKey);
       state.settings.hasStoredDeepSeekApiKey = readStoredProviderKey(data, "DEEPSEEK", state.settings.hasStoredDeepSeekApiKey, !!deepSeekApiKey);
+      state.settings.customProviderName = data.customProviderName || "";
+      state.settings.hasStoredCustomProviderApiKey = !!data.hasCustomProviderApiKey || !!customProviderApiKey;
+      state.settings.customProviderUrl = data.customProviderUrl || "";
       state.settings.accountSettingsUpdatedAt = data.updatedAt || "";
       state.settings.openAiApiKey = "";
       state.settings.geminiApiKey = "";
       state.settings.deepSeekApiKey = "";
+      state.settings.customProviderApiKey = "";
       setProvider(data.preferredProvider || preferredProvider);
       saveSettings();
       applyProviderFromAuth();
-      return { openAiApiKeySaved: !!openAiApiKey, geminiApiKeySaved: !!geminiApiKey, deepSeekApiKeySaved: !!deepSeekApiKey, preferredProvider };
+      return { openAiApiKeySaved: !!openAiApiKey, geminiApiKeySaved: !!geminiApiKey, deepSeekApiKeySaved: !!deepSeekApiKey, customProviderSaved: customSubmitted, preferredProvider };
     }
 
     async function clearProviderKey(kind) {
@@ -1585,7 +1614,9 @@
         const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
         try {
           const saved = await saveAccountSettings();
-          if (saved?.deepSeekApiKeySaved) {
+          if (saved?.customProviderSaved) {
+            setAuthMessage("自訂供應商已加密儲存並設為偏好 AI。", false);
+          } else if (saved?.deepSeekApiKeySaved) {
             setAuthMessage("DeepSeek Key 已儲存到後端，並切換偏好 AI 為 DEEPSEEK。", false);
           } else if (saved?.geminiApiKeySaved) {
             setAuthMessage("Gemini Key 已儲存到後端，並切換偏好 AI 為 GEMINI。", false);
@@ -1605,10 +1636,15 @@
         const openAiApiKey = document.getElementById("openAiApiKey").value.trim();
         const geminiApiKey = document.getElementById("geminiApiKey").value.trim();
         const deepSeekApiKey = document.getElementById("deepSeekApiKey").value.trim();
+        const customSubmitted = document.getElementById("customProviderName").value.trim()
+          || document.getElementById("customProviderApiKey").value.trim()
+          || document.getElementById("customProviderUrl").value.trim();
         state.settings.openAiApiKey = openAiApiKey;
         state.settings.geminiApiKey = geminiApiKey;
         state.settings.deepSeekApiKey = deepSeekApiKey;
-        if (deepSeekApiKey) {
+        if (customSubmitted) {
+          setAuthMessage("自訂供應商包含敏感設定，請先登入帳號再儲存。", true);
+        } else if (deepSeekApiKey) {
           setProvider("DEEPSEEK");
         } else if (geminiApiKey) {
           setProvider("GEMINI");
@@ -2927,6 +2963,10 @@
       document.getElementById("openAiApiKey").value = state.settings.authToken ? "" : (state.settings.openAiApiKey || "");
       document.getElementById("geminiApiKey").value = state.settings.authToken ? "" : (state.settings.geminiApiKey || "");
       document.getElementById("deepSeekApiKey").value = state.settings.authToken ? "" : (state.settings.deepSeekApiKey || "");
+      document.getElementById("customProviderName").value = state.settings.customProviderName || "";
+      document.getElementById("customProviderApiKey").value = "";
+      document.getElementById("customProviderUrl").value = state.settings.customProviderUrl || "";
+      document.querySelector('#provider option[value="CUSTOM"]').textContent = state.settings.customProviderName || "自訂供應商";
       document.getElementById("openAiApiKey").placeholder = state.settings.authToken && state.settings.hasStoredOpenAiApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "OpenAI API Key";
       document.getElementById("geminiApiKey").placeholder = state.settings.authToken && state.settings.hasStoredGeminiApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "Gemini API Key";
       document.getElementById("deepSeekApiKey").placeholder = state.settings.authToken && state.settings.hasStoredDeepSeekApiKey ? "已儲存於後端，輸入新值才會覆蓋" : "DeepSeek API Key";
@@ -2946,6 +2986,8 @@
         "OpenAI Key": providerKeyControl("OPENAI", statusPill(loggedIn ? (state.settings.hasStoredOpenAiApiKey ? "已儲存" : state.settings.openAiApiKey ? "本機" : "空白") : (state.settings.openAiApiKey ? "本機" : "空白"), (state.settings.hasStoredOpenAiApiKey || state.settings.openAiApiKey) ? "good" : "warn"), !!(state.settings.hasStoredOpenAiApiKey || state.settings.openAiApiKey)),
         "Gemini Key": providerKeyControl("GEMINI", statusPill(loggedIn ? (state.settings.hasStoredGeminiApiKey ? "已儲存" : state.settings.geminiApiKey ? "本機" : "空白") : (state.settings.geminiApiKey ? "本機" : "空白"), (state.settings.hasStoredGeminiApiKey || state.settings.geminiApiKey) ? "good" : "warn"), !!(state.settings.hasStoredGeminiApiKey || state.settings.geminiApiKey)),
         "DeepSeek Key": providerKeyControl("DEEPSEEK", statusPill(loggedIn ? (state.settings.hasStoredDeepSeekApiKey ? "已儲存" : state.settings.deepSeekApiKey ? "本機" : "空白") : (state.settings.deepSeekApiKey ? "本機" : "空白"), (state.settings.hasStoredDeepSeekApiKey || state.settings.deepSeekApiKey) ? "good" : "warn"), !!(state.settings.hasStoredDeepSeekApiKey || state.settings.deepSeekApiKey)),
+        "自訂供應商": statusPill(state.settings.customProviderName || "未設定", state.settings.hasStoredCustomProviderApiKey && state.settings.customProviderUrl ? "good" : "warn"),
+        "自訂供應商網址": state.settings.customProviderUrl || "未設定",
         "偏好 AI": state.settings.preferredProvider || state.provider,
         "帳號設定更新時間": state.settings.accountSettingsUpdatedAt || "尚未儲存",
         "最近文件匯入": state.settings.lastDocumentImport || "尚未匯入文件",

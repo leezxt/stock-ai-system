@@ -32,6 +32,16 @@ class ApiKeyHeaderResolver {
         return resolve("X-DeepSeek-Api-Key", fallback, "DEEPSEEK");
     }
 
+    AccountSettingsService.CustomProviderSettings resolveCustomProvider() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (attributes instanceof ServletRequestAttributes servletAttributes) {
+            return authService.optionalUser(servletAttributes.getRequest())
+                .map(user -> accountSettingsService.customProviderSettings(user.email()))
+                .orElseGet(() -> new AccountSettingsService.CustomProviderSettings("", "", ""));
+        }
+        return new AccountSettingsService.CustomProviderSettings("", "", "");
+    }
+
     private String resolve(String headerName, String fallback, String provider) {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (attributes instanceof ServletRequestAttributes servletAttributes) {
@@ -40,9 +50,9 @@ class ApiKeyHeaderResolver {
             if (header != null && !header.isBlank()) {
                 return header.trim();
             }
-            String authorization = request.getHeader("Authorization");
-            if (authorization != null && !authorization.isBlank()) {
-                String email = authService.requireUser(authorization).email();
+            var user = authService.optionalUser(request);
+            if (user.isPresent()) {
+                String email = user.get().email();
                 String storedKey = switch (provider) {
                     case "OPENAI" -> accountSettingsService.openAiApiKey(email);
                     case "GEMINI" -> accountSettingsService.geminiApiKey(email);

@@ -9,17 +9,20 @@ class FallbackAiProviderAdapter implements AiProviderAdapter {
     private final OpenAiProviderAdapter openAiProviderAdapter;
     private final GeminiProviderAdapter geminiProviderAdapter;
     private final DeepSeekProviderAdapter deepSeekProviderAdapter;
+    private final CustomProviderAdapter customProviderAdapter;
     private final MockAiProviderAdapter mockAiProviderAdapter;
 
     FallbackAiProviderAdapter(
         OpenAiProviderAdapter openAiProviderAdapter,
         GeminiProviderAdapter geminiProviderAdapter,
         DeepSeekProviderAdapter deepSeekProviderAdapter,
+        CustomProviderAdapter customProviderAdapter,
         MockAiProviderAdapter mockAiProviderAdapter
     ) {
         this.openAiProviderAdapter = openAiProviderAdapter;
         this.geminiProviderAdapter = geminiProviderAdapter;
         this.deepSeekProviderAdapter = deepSeekProviderAdapter;
+        this.customProviderAdapter = customProviderAdapter;
         this.mockAiProviderAdapter = mockAiProviderAdapter;
     }
 
@@ -43,6 +46,13 @@ class FallbackAiProviderAdapter implements AiProviderAdapter {
                     provider,
                     index,
                     deepSeekProviderAdapter.hasApiKey() ? "mock-ai:deepseek-live-failed" : "mock-ai:no-deepseek-key"
+                ));
+        }
+        if ("CUSTOM".equalsIgnoreCase(provider)) {
+            return customProviderAdapter.tryAnalyze(stock, context, provider)
+                .orElseGet(() -> mockAiProviderAdapter.analyzeWithSource(
+                    stock, context, provider, index,
+                    customProviderAdapter.isConfigured() ? "mock-ai:custom-live-failed" : "mock-ai:no-custom-provider"
                 ));
         }
         return openAiProviderAdapter.tryAnalyze(stock, context, provider)
@@ -75,6 +85,13 @@ class FallbackAiProviderAdapter implements AiProviderAdapter {
                     provider,
                     message,
                     deepSeekProviderAdapter.hasApiKey() ? "mock-ai:deepseek-live-failed" : "mock-ai:no-deepseek-key"
+                ));
+        }
+        if ("CUSTOM".equalsIgnoreCase(provider)) {
+            return customProviderAdapter.tryChatMessage(context, provider, message)
+                .orElseGet(() -> mockAiProviderAdapter.chatMessageWithSource(
+                    stock, context, provider, message,
+                    customProviderAdapter.isConfigured() ? "mock-ai:custom-live-failed" : "mock-ai:no-custom-provider"
                 ));
         }
         return openAiProviderAdapter.tryChatMessage(stock, context, provider, message)
