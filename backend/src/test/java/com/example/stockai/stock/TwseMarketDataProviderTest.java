@@ -3,6 +3,8 @@ package com.example.stockai.stock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -30,5 +32,8 @@ class TwseMarketDataProviderTest {
         assertThat(record.lastPrice()).isEqualByComparingTo("1035.00");
         assertThat(record.changePercent()).isEqualByComparingTo("1.47");
         assertThat(record.prices()).containsExactly(new BigDecimal("1020"), new BigDecimal("1035.00"));
+        assertThat(record.observedAt()).isEqualTo(
+            LocalDate.now(ZoneId.of("Asia/Taipei")).atStartOfDay(ZoneId.of("Asia/Taipei")).toInstant()
+        );
     }
 }

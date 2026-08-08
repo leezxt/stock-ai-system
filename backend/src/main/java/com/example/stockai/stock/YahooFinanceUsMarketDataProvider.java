@@ -10,6 +10,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -112,7 +115,13 @@ class YahooFinanceUsMarketDataProvider {
             throw new IllegalArgumentException("missing yahoo last price for " + symbol);
         }
         BigDecimal changePercent = changePercent(lastPrice, previousClose);
+        boolean adjustedClose = hasAdjustedClose(result);
         List<BigDecimal> prices = parsePrices(result, lastPrice, fallback);
+        List<PriceBar> bars = parsePriceBars(result);
+        // Keep adjusted historical bars internally consistent. Appending an
+        // unadjusted regularMarketPrice here creates a false split/dividend
+        // jump, so the current quote remains in the summary only.
+        Instant observedAt = observedAt(meta, bars);
         return new StockRecord(
             resolvedSymbol,
             isBlank(name) ? resolvedSymbol : name,
@@ -121,7 +130,11 @@ class YahooFinanceUsMarketDataProvider {
             lastPrice,
             changePercent,
             prices,
-            "yahoo-finance"
+            "yahoo-finance",
+            bars,
+            observedAt,
+            parseCorporateActions(result),
+            adjustedClose ? "ADJUSTED_CLOSE" : "UNADJUSTED_CLOSE"
         );
     }
 
@@ -145,7 +158,7 @@ class YahooFinanceUsMarketDataProvider {
     private Map<String, Object> getChartJson(String symbol) throws IOException, InterruptedException {
         String url = chartBaseUrl
             + "/" + encode(symbol)
-            + "?range=1mo&interval=1d&includePrePost=false";
+            + "?range=1mo&interval=1d&includePrePost=false&events=div%2Csplits";
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
             .timeout(Duration.ofSeconds(6))
             .header("Accept", "application/json")
@@ -193,12 +206,70 @@ class YahooFinanceUsMarketDataProvider {
                 ? fallback.prices()
                 : List.of(lastPrice);
         }
-        if (prices.isEmpty() || prices.get(prices.size() - 1).compareTo(lastPrice) != 0) {
+        if (!hasAdjustedClose(result) && (prices.isEmpty() || prices.get(prices.size() - 1).compareTo(lastPrice) != 0)) {
             List<BigDecimal> appended = new ArrayList<>(prices);
             appended.add(lastPrice);
             prices = appended;
         }
         return List.copyOf(prices);
+    }
+
+    private static List<PriceBar> parsePriceBars(Map<String, Object> result) {
+        Object rawTimestamps = result.get("timestamp");
+        if (!(rawTimestamps instanceof List<?> timestamps)) {
+            return List.of();
+        }
+        List<?> closes = rawCloseValues(result);
+        int size = Math.min(timestamps.size(), closes.size());
+        List<PriceBar> bars = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            Object rawTimestamp = timestamps.get(i);
+            if (!(rawTimestamp instanceof Number timestamp)) {
+                continue;
+            }
+            BigDecimal close = decimal(closes.get(i));
+            if (close == null) {
+                continue;
+            }
+            LocalDate date = Instant.ofEpochSecond(timestamp.longValue())
+                .atZone(ZoneId.of("America/New_York"))
+                .toLocalDate();
+            bars.add(new PriceBar(date, close, "yahoo-finance"));
+        }
+        return List.copyOf(bars);
+    }
+
+    private static Instant observedAt(Map<String, Object> meta, List<PriceBar> bars) {
+        Object rawRegularMarketTime = meta.get("regularMarketTime");
+        if (rawRegularMarketTime instanceof Number value) {
+            return Instant.ofEpochSecond(value.longValue());
+        }
+        if (rawRegularMarketTime != null) {
+            try {
+                return Instant.ofEpochSecond(Long.parseLong(String.valueOf(rawRegularMarketTime).trim()));
+            } catch (RuntimeException ignored) {
+                // Fall through to the latest chart date when metadata is malformed.
+            }
+        }
+        if (!bars.isEmpty()) {
+            return bars.get(bars.size() - 1).date()
+                .atStartOfDay(ZoneId.of("America/New_York"))
+                .toInstant();
+        }
+        return null;
+    }
+
+    private static List<?> rawCloseValues(Map<String, Object> result) {
+        Map<String, Object> indicators = asMap(result.get("indicators"), "indicators");
+        List<Map<String, Object>> adjCloseList = asListOfMaps(indicators.get("adjclose"));
+        if (!adjCloseList.isEmpty() && adjCloseList.get(0).get("adjclose") instanceof List<?> values) {
+            return values;
+        }
+        List<Map<String, Object>> quoteList = asListOfMaps(indicators.get("quote"));
+        if (!quoteList.isEmpty() && quoteList.get(0).get("close") instanceof List<?> values) {
+            return values;
+        }
+        return List.of();
     }
 
     private static List<BigDecimal> parseAdjClose(Map<String, Object> result) {
@@ -209,6 +280,62 @@ class YahooFinanceUsMarketDataProvider {
         }
         Object raw = adjCloseList.get(0).get("adjclose");
         return decimals(raw);
+    }
+
+    private static boolean hasAdjustedClose(Map<String, Object> result) {
+        Map<String, Object> indicators = asMap(result.get("indicators"), "indicators");
+        return !asListOfMaps(indicators.get("adjclose")).isEmpty();
+    }
+
+    private static List<CorporateAction> parseCorporateActions(Map<String, Object> result) {
+        Object rawEvents = result.get("events");
+        if (!(rawEvents instanceof Map<?, ?> events)) {
+            return List.of();
+        }
+        List<CorporateAction> actions = new ArrayList<>();
+        parseEventGroup(events.get("dividends"), "DIVIDEND", actions);
+        parseEventGroup(events.get("splits"), "SPLIT", actions);
+        return actions.stream()
+            .sorted(java.util.Comparator.comparing(CorporateAction::date))
+            .toList();
+    }
+
+    private static void parseEventGroup(Object rawGroup, String type, List<CorporateAction> target) {
+        if (!(rawGroup instanceof Map<?, ?> group)) {
+            return;
+        }
+        for (Map.Entry<?, ?> entry : group.entrySet()) {
+            if (!(entry.getValue() instanceof Map<?, ?> event)) {
+                continue;
+            }
+            LocalDate date = eventDate(entry.getKey(), event);
+            if (date == null) {
+                continue;
+            }
+            String description = "DIVIDEND".equals(type)
+                ? "股利 " + text(event.get("amount"), "未知金額")
+                : "分割 " + text(event.get("splitRatio"), text(event.get("numerator"), "?") + ":" + text(event.get("denominator"), "?"));
+            target.add(new CorporateAction(date, type, description, "yahoo-finance-events"));
+        }
+    }
+
+    private static LocalDate eventDate(Object key, Map<?, ?> event) {
+        Object rawDate = event.get("date");
+        if (rawDate == null) {
+            rawDate = key;
+        }
+        try {
+            if (rawDate instanceof Number number) {
+                return Instant.ofEpochSecond(number.longValue()).atZone(ZoneId.of("America/New_York")).toLocalDate();
+            }
+            String value = String.valueOf(rawDate).trim();
+            if (value.matches("\\d+")) {
+                return Instant.ofEpochSecond(Long.parseLong(value)).atZone(ZoneId.of("America/New_York")).toLocalDate();
+            }
+            return LocalDate.parse(value);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private static List<BigDecimal> parseQuoteClose(Map<String, Object> result) {

@@ -65,6 +65,19 @@ public class UserStore {
         return Optional.ofNullable(users.get(email));
     }
 
+    /**
+     * Returns normalized account identifiers for local maintenance jobs.
+     * The scheduler uses this list only to run account-scoped, fail-closed
+     * evaluations; it never exposes passwords or provider credentials.
+     */
+    public synchronized List<String> listEmails() {
+        if (jdbcTemplate != null) {
+            return jdbcTemplate.query("SELECT email FROM stockai_users ORDER BY email",
+                (rs, rowNum) -> rs.getString("email"));
+        }
+        return List.copyOf(users.keySet());
+    }
+
     synchronized UserRecord create(String email, String salt, String hash) {
         if (jdbcTemplate != null) {
             UserRecord user = new UserRecord(email, salt, hash, Instant.now(), "LOCAL");

@@ -6,6 +6,8 @@ Goal: replace `mock-api-server.mjs` with a real Spring Boot backend while keepin
 http://localhost:8080/api/v1
 ```
 
+> This is the original phased plan. The later phases below are historical status notes; use `WORK_HANDOFF.md` for the current live-gate order.
+
 ## Phase 1: Runnable Shell
 
 Create:
@@ -95,8 +97,9 @@ Status: partially done. `AlphaVantageMarketDataProvider` now supports opt-in US 
 2. `AiProviderAdapter` seam is done. Add real provider implementations and keep mock as fallback.
 Status: partially done. `OpenAiProviderAdapter` supports opt-in OpenAI Responses API calls with mock fallback. Runtime and browser verification covered no-key fallback.
 3. Expand real market data coverage beyond the current US daily path, or add a TW-capable provider.
-Status: partially done. `TwseMarketDataProvider` supports TWSE `STOCK_DAY_ALL` with mock fallback. Parser tests pass; live runtime currently falls back to mock on this machine because TWSE TLS handshake fails locally.
+Status: partially done. `TwseMarketDataProvider` supports TWSE `STOCK_DAY_ALL` with mock fallback. Parser tests pass; `scripts\smoke-twse-live.cmd` now verifies the official endpoint and backend 2330 value on this machine, while fallback remains for deployment environments where TLS or the upstream is unavailable.
 4. Replace mock prediction with ML service client plus fallback.
+   Status: done for the local `local-logistic-v1` supervised baseline with a data-insufficient heuristic fallback; a remote model service remains optional.
 5. Add timeouts and controlled provider errors where external provider calls are introduced.
 6. Replace file-backed watchlist with database storage only when multi-user accounts are added.
 

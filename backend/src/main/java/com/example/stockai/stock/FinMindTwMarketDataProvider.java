@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -157,15 +158,30 @@ class FinMindTwMarketDataProvider {
             .filter(Objects::nonNull)
             .sorted(Comparator.comparing(row -> text(row.get("date"), "")))
             .toList();
-        List<BigDecimal> prices = sorted.stream()
-            .map(row -> decimal(row.get("close")))
+        List<PriceBar> bars = sorted.stream()
+            .map(row -> {
+                BigDecimal close = decimal(row.get("close"));
+                String date = text(row.get("date"), "");
+                if (close == null || date.isBlank()) {
+                    return null;
+                }
+                try {
+                    return new PriceBar(LocalDate.parse(date), close, "finmind");
+                } catch (RuntimeException ignored) {
+                    return null;
+                }
+            })
             .filter(Objects::nonNull)
             .toList();
-        if (prices.isEmpty()) {
+        if (bars.isEmpty()) {
             throw new IllegalArgumentException("finmind close prices are empty");
         }
-        Map<String, Object> lastRow = sorted.get(sorted.size() - 1);
-        BigDecimal close = decimal(lastRow.get("close"));
+        PriceBar lastBar = bars.get(bars.size() - 1);
+        Map<String, Object> lastRow = sorted.stream()
+            .filter(row -> lastBar.date().toString().equals(text(row.get("date"), "")))
+            .reduce((left, right) -> right)
+            .orElse(sorted.get(sorted.size() - 1));
+        BigDecimal close = lastBar.close();
         BigDecimal spread = decimal(lastRow.get("spread"));
         BigDecimal changePercent = changePercent(close, spread, sorted);
         return new StockRecord(
@@ -175,8 +191,10 @@ class FinMindTwMarketDataProvider {
             "TWD",
             close,
             changePercent,
-            List.copyOf(prices),
-            "finmind"
+            bars.stream().map(PriceBar::close).toList(),
+            "finmind",
+            bars,
+            lastBar.date().atStartOfDay(ZoneId.of("Asia/Taipei")).toInstant()
         );
     }
 

@@ -12,19 +12,26 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.stockai.common.ExternalApiKeyHeaderResolver;
+import com.example.stockai.stock.AiProviderTelemetry;
 
 @RestController
 @RequestMapping("/api/v1/health")
 public class HealthController {
     private final JdbcTemplate jdbcTemplate;
+    private final AiProviderTelemetry aiProviderTelemetry;
 
     public HealthController() {
-        this.jdbcTemplate = null;
+        this(null, null);
+    }
+
+    public HealthController(Optional<JdbcTemplate> jdbcTemplate) {
+        this(jdbcTemplate, null);
     }
 
     @Autowired
-    public HealthController(Optional<JdbcTemplate> jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate.orElse(null);
+    public HealthController(Optional<JdbcTemplate> jdbcTemplate, Optional<AiProviderTelemetry> aiProviderTelemetry) {
+        this.jdbcTemplate = jdbcTemplate == null ? null : jdbcTemplate.orElse(null);
+        this.aiProviderTelemetry = aiProviderTelemetry == null ? null : aiProviderTelemetry.orElse(null);
     }
     private static final String DEFAULT_TWSE_DISCLOSURE_URL = "https://mopsov.twse.com.tw/mops/web/ajax_t05st01?firstin=1&TYPEK=all&co_id={symbol}&year={rocYear}&month=&b_date=&e_date=";
 
@@ -51,6 +58,21 @@ public class HealthController {
 
     @Value("${stockai.mimo.model:${MIMO_MODEL:mimo-v2.5-pro}}")
     private String mimoModel = "mimo-v2.5-pro";
+
+    @Value("${stockai.rag.embedding.provider:${STOCKAI_RAG_EMBEDDING_PROVIDER:hash}}")
+    private String ragEmbeddingProvider = "hash";
+
+    @Value("${stockai.rag.embedding.model:${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}}")
+    private String ragEmbeddingModel = "text-embedding-3-small";
+
+    @Value("${stockai.rag.embedding.dimension:16}")
+    private int ragEmbeddingDimension = 16;
+
+    @Value("${stockai.rag.embedding.api-key:${OPENAI_API_KEY:}}")
+    private String ragEmbeddingApiKey = "";
+
+    @Value("${stockai.secrets.encryption-key:${STOCKAI_SECRETS_ENCRYPTION_KEY:${STOCKAI_AUTH_SECRET:}}}")
+    private String secretsEncryptionKey = "";
 
     @Value("${stockai.alpha-vantage.api-key:${ALPHAVANTAGE_API_KEY:}}")
     private String alphaVantageApiKey = "";
@@ -93,6 +115,12 @@ public class HealthController {
         boolean alphaVantageConfigured = !isBlank(resolveAlphaVantageApiKey());
         boolean finMindTokenConfigured = !isBlank(resolveFinMindToken());
         boolean fmpConfigured = !isBlank(resolveFmpApiKey()) && !isBlank(fmpBaseUrl);
+        String resolvedEmbeddingProvider = isBlank(ragEmbeddingProvider)
+            ? "hash"
+            : ragEmbeddingProvider.trim().toLowerCase(java.util.Locale.ROOT);
+        String resolvedEmbeddingModel = "hash".equals(resolvedEmbeddingProvider)
+            ? "hash-embedding-v1"
+            : isBlank(ragEmbeddingModel) ? "text-embedding-3-small" : ragEmbeddingModel.trim();
         DatabaseReadiness database = databaseReadiness();
         HealthResponse response = new HealthResponse(database.healthy() ? "UP" : "DOWN", Instant.now(), database, new ProviderReadiness(
             !isBlank(openAiApiKey),
@@ -126,8 +154,13 @@ public class HealthController {
             !isBlank(twseStockDayAllUrl),
             twseStockDayAllUrl,
             !isBlank(twseDisclosureUrl),
-            twseDisclosureUrl
-        ));
+            twseDisclosureUrl,
+            resolvedEmbeddingProvider,
+            resolvedEmbeddingModel,
+            ragEmbeddingDimension,
+            "hash".equals(resolvedEmbeddingProvider) || !isBlank(ragEmbeddingApiKey),
+            !isBlank(secretsEncryptionKey)
+        ), aiProviderTelemetry == null ? java.util.Map.of() : aiProviderTelemetry.snapshot());
         return database.healthy() ? ResponseEntity.ok(response) : ResponseEntity.status(503).body(response);
     }
 
@@ -165,7 +198,13 @@ public class HealthController {
         }
     }
 
-    public record HealthResponse(String status, Instant timestamp, DatabaseReadiness database, ProviderReadiness providers) {}
+    public record HealthResponse(
+        String status,
+        Instant timestamp,
+        DatabaseReadiness database,
+        ProviderReadiness providers,
+        java.util.Map<String, AiProviderTelemetry.Stats> aiTelemetry
+    ) {}
 
     public record DatabaseReadiness(boolean configured, boolean healthy, String mode) {}
 
@@ -201,6 +240,11 @@ public class HealthController {
         boolean twseEndpointConfigured,
         String twseStockDayAllUrl,
         boolean twseDisclosureConfigured,
-        String twseDisclosureUrl
+        String twseDisclosureUrl,
+        String ragEmbeddingProvider,
+        String ragEmbeddingModel,
+        int ragEmbeddingDimension,
+        boolean ragEmbeddingConfigured,
+        boolean secretsEncryptionConfigured
     ) {}
 }

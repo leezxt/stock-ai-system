@@ -38,10 +38,33 @@ class MockAiProviderAdapter implements AiProviderAdapter {
     }
 
     AiChatResult chatMessageWithSource(StockRecord stock, RagContext context, String provider, String message, String source) {
+        String question = message == null ? "" : message.trim();
+        TechnicalSummaryResponse technical = context.technicalSummary();
+        PredictionResponse prediction = context.prediction();
+        String ma20 = technical.dataQuality().unavailableIndicators().contains("MA20")
+            ? "資料不足"
+            : technical.ma20().toString();
+        String rsi14 = technical.dataQuality().unavailableIndicators().contains("RSI14")
+            ? "資料不足"
+            : technical.rsi14().toString();
+        String upProbability = prediction.dataQuality().unavailableIndicators().contains("UP_PROBABILITY")
+            ? "資料不足"
+            : prediction.upProbability().toString();
+        String riskLevel = prediction.dataQuality().unavailableIndicators().contains("RISK_LEVEL")
+            ? "資料不足"
+            : prediction.riskLevel();
         return new AiChatResult(
-            "根據 " + stock.symbol() + " 目前資料：" + message + "。"
-                + context.evidenceSummary()
-                + " 重點是價格是否守住 MA20、波動是否擴大，以及模型分歧是否升高。此回覆僅供研究，不代表投資建議。",
+            "你問的是：「" + question + "」。目前問答不限制快捷問題，會先依問題意圖使用可用資料。"
+                + "目前 " + stock.symbol() + " 最新價 " + stock.lastPrice()
+                + "，漲跌 " + stock.changePercent() + "%；MA20 為 " + ma20
+                + "，RSI14 為 " + rsi14 + "，模型 " + prediction.horizonDays()
+                + " 日上漲機率為 " + upProbability + "，風險等級為 " + riskLevel + "。"
+                + " 行情資料狀態為 " + technical.dataQuality().status() + "，實際樣本 "
+                + technical.dataQuality().sampleCount() + " 筆（" + technical.dataQuality().source() + "）。"
+                + " " + context.evidenceSummary()
+                + " 工具意圖為 " + context.chatToolPlan().intent() + "，工具狀態為 " + context.chatToolPlan().answerStatus() + "。"
+                + " 目前為 " + source + " 降級回覆，未使用即時模型；若要取得針對任意問題的生成式分析，請設定並驗證所選 AI provider。"
+                + "此回覆僅供研究，不代表投資建議。",
             source
         );
     }

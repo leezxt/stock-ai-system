@@ -14,5 +14,24 @@ public record PredictionResponse(
     BigDecimal volatility,
     String riskLevel,
     String modelVersion,
-    Instant generatedAt
-) {}
+    Instant generatedAt,
+    MarketDataQuality dataQuality
+) {
+    public PredictionResponse(
+        String symbol,
+        Market market,
+        int horizonDays,
+        BigDecimal upProbability,
+        BigDecimal expectedReturn,
+        BigDecimal volatility,
+        String riskLevel,
+        String modelVersion,
+        Instant generatedAt
+    ) {
+        this(symbol, market, horizonDays, upProbability, expectedReturn, volatility, riskLevel, modelVersion, generatedAt, MarketDataQuality.unknown());
+    }
+
+    public PredictionResponse {
+        dataQuality = dataQuality == null ? MarketDataQuality.unknown() : dataQuality;
+    }
+}

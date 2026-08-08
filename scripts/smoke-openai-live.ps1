@@ -23,6 +23,9 @@ if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
 }
 
 $openAiKey = $env:OPENAI_API_KEY.Trim()
+if ($openAiKey -eq "sk-your-real-key") {
+  throw "OPENAI_API_KEY is still the example placeholder. Replace it in local-env.cmd with a real OpenAI platform API key; do not paste the key into chat."
+}
 if ($openAiKey -match "\s") {
   throw "OPENAI_API_KEY contains whitespace/newline characters. Please paste a single-line OpenAI API key into local-env.cmd."
 }

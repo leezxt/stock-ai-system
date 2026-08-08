@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Stock AI 股市分析工作台</title>
+  <script src="https://accounts.google.com/gsi/client" async defer onload="window.dispatchEvent(new Event('stockai-google-loaded'))"></script>
   <style>
     :root {
       --bg: #06131a;
@@ -253,6 +254,8 @@
     .card:hover::after { opacity: 1; }
     .metric { font-size: clamp(26px, 3vw, 38px); font-weight: 900; line-height: 1.03; letter-spacing: -.035em; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .chat-composer input { flex: 1 1 auto; min-width: 0; }
+    .chat-composer button { flex: 0 0 auto; min-width: 88px; }
     .badge {
       display: inline-flex;
       align-items: center;
@@ -423,6 +426,36 @@
       color: #dff8f2;
       line-height: 1.55;
     }
+    .lineage-panel {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid rgba(107, 188, 255, .18);
+      border-radius: 14px;
+      background: rgba(107, 188, 255, .06);
+      line-height: 1.5;
+    }
+    .lineage-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+    .lineage-item { padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: rgba(6, 23, 30, .55); }
+    .lineage-item span { display: block; color: var(--muted); font-size: 11px; }
+    .lineage-item strong { display: block; margin-top: 2px; font-size: 13px; }
+    .lineage-actions { margin-top: 8px; display: grid; gap: 6px; }
+    .lineage-action { padding: 7px 9px; border-left: 3px solid var(--amber); background: rgba(255, 200, 87, .06); border-radius: 8px; }
+    .alert-center {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid rgba(255, 200, 87, .22);
+      border-radius: 14px;
+      background: rgba(255, 200, 87, .055);
+    }
+    .alert-form { display: grid; grid-template-columns: 1.2fr 1.3fr 1fr auto; gap: 8px; align-items: end; margin-top: 10px; }
+    .alert-form label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+    .alert-form button { min-height: 42px; }
+    .alert-table { margin-top: 10px; }
+    .alert-table .triggered { color: var(--amber); font-weight: 700; }
+    .alert-table .normal { color: var(--green); }
+    .alert-table .unavailable { color: var(--red); }
+    .alert-table .disabled { color: var(--muted); }
+    .alert-empty { padding: 10px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     th { color: var(--muted); font-size: 12px; font-weight: 600; }
@@ -732,6 +765,8 @@
     @media (max-width: 760px) {
       .main { padding-bottom: calc(98px + env(safe-area-inset-bottom)); }
       .tabs { display: none; }
+      .lineage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .alert-form { grid-template-columns: 1fr 1fr; }
       .mobile-dock { display: grid; }
       .interaction-toast {
         left: 18px;
@@ -789,7 +824,6 @@
         </div>
         <select id="provider">
           <option>OPENAI</option>
-          <option>CLAUDE</option>
           <option>GEMINI</option>
           <option>DEEPSEEK</option>
           <option>MIMO</option>
@@ -810,7 +844,7 @@
       <section class="grid cols-4">
         <div class="card"><h3>最新價格</h3><div class="metric" id="price"></div><p id="change"></p></div>
         <div class="card"><h3>AI 共識分數</h3><div class="metric" id="consensus"></div><p class="muted" id="consensusText"></p></div>
-        <div class="card"><h3>上漲機率</h3><div class="metric" id="upProb"></div><p class="muted">heuristic-momentum-v1 · 5 日</p></div>
+        <div class="card"><h3>上漲機率</h3><div class="metric" id="upProb"></div><p class="muted" id="upProbText">model · 5 日</p></div>
         <div class="card"><h3>風險等級</h3><div class="metric" id="risk"></div><p class="muted" id="riskText"></p></div>
       </section>
 
@@ -833,6 +867,8 @@
               <div id="chartLegend" class="chart-legend"></div>
               <div id="chartStats" class="chart-stats"></div>
               <p id="chartInsight" class="chart-insight"></p>
+              <p id="chartDataQuality" class="footer-note"></p>
+              <div id="dataLineagePanel" class="lineage-panel"></div>
             </div>
             <p class="muted">目前價格歷史會依資料來源顯示；若真實資料不可用，會自動回落模擬資料。</p>
           </div>
@@ -841,7 +877,36 @@
             <table>
               <tbody id="summaryTable"></tbody>
             </table>
+            <p id="marketDataQuality" class="footer-note"></p>
           </div>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <div class="row">
+            <div>
+              <h2>新聞評分評估</h2>
+              <p class="muted" id="newsScoreMeta">評估目前帳號已匯入、且可追溯來源的新聞。</p>
+            </div>
+            <button id="loadNewsScore" type="button">評估新聞</button>
+          </div>
+          <div class="analysis-summary" style="margin-top:12px">
+            <div class="analysis-box">
+              <span class="analysis-caption">整體新聞訊號</span>
+              <strong id="newsScoreOverall">--</strong>
+            </div>
+            <div class="analysis-box">
+              <span class="analysis-caption">評估信心</span>
+              <strong id="newsScoreConfidence">--</strong>
+            </div>
+            <div class="analysis-box">
+              <span class="analysis-caption">新聞篇數</span>
+              <strong id="newsScoreCount">--</strong>
+            </div>
+          </div>
+          <div id="newsScoreStatus" class="footer-note">尚未執行新聞評估。</div>
+          <div id="newsScoreArticles" class="evidence-block">
+            <div class="evidence-empty">評分會列出每篇新聞的來源、相關度、命中詞與理由。</div>
+          </div>
+          <p class="footer-note">這是可追溯的規則式新聞訊號，不是價格預測；沒有已匯入新聞時不會產生假分數。</p>
         </div>
       </section>
 
@@ -850,6 +915,7 @@
           <div class="card">
             <h2>技術指標</h2>
             <table><tbody id="techTable"></tbody></table>
+            <p id="technicalDataQuality" class="footer-note"></p>
           </div>
           <div class="card">
             <h2>AI 分析 · <span id="providerLabel"></span></h2>
@@ -866,12 +932,19 @@
                 <span class="analysis-caption">5 日上漲機率</span>
                 <strong id="analysisProb"></strong>
               </div>
+              <div class="analysis-box">
+                <span class="analysis-caption">消息面訊號</span>
+                <strong id="analysisNewsSignal"></strong>
+              </div>
             </div>
+            <p id="analysisNewsNote" class="footer-note"></p>
             <div class="analysis-panel">
               <h3>偏多理由</h3>
               <ul class="list" id="bullish"></ul>
               <h3 style="margin-top:14px">主要風險</h3>
               <ul class="list" id="bearish"></ul>
+              <h3 style="margin-top:14px">觀察重點</h3>
+              <ul class="list" id="watchPoints"></ul>
             </div>
             <div class="analysis-conclusion" id="conclusion"></div>
             <div class="evidence-block">
@@ -886,6 +959,7 @@
         <div class="grid cols-2">
           <div class="card">
             <h2>多模型比較</h2>
+            <p id="comparisonDataQuality" class="footer-note"></p>
             <div class="provider-grid" id="providerButtons"></div>
             <div class="watch-actions" style="margin-top:8px">
               <button data-fail="DEEPSEEK">模擬 DeepSeek 失敗</button>
@@ -917,9 +991,40 @@
             <div class="watch-actions"><button data-pick="US:AAPL">AAPL</button><button data-pick="US:NVDA">NVDA</button><button data-pick="TW:2330.TW">2330.TW</button></div>
           </div>
           <table>
-            <thead><tr><th>代碼</th><th>市場</th><th>價格</th><th>漲跌</th><th>AI 分數</th><th>風險</th><th>操作</th></tr></thead>
+            <thead><tr><th>代碼</th><th>市場</th><th>價格</th><th>漲跌</th><th>AI 分數</th><th>風險</th><th>行情來源</th><th>資料品質</th><th>操作</th></tr></thead>
             <tbody id="watchRows"></tbody>
           </table>
+        </div>
+        <div class="card alert-center">
+          <div class="row">
+            <div>
+              <h2>自選股警示中心</h2>
+              <p class="muted">只評估目前帳號的自選股；規則與資料來源會保留，觸發不等於交易指令。</p>
+            </div>
+            <div class="watch-actions"><button id="refreshWatchAlerts" type="button">重新評估</button></div>
+          </div>
+          <div class="alert-form">
+            <label>股票
+              <select id="alertSymbol" aria-label="警示股票"></select>
+            </label>
+            <label>條件
+              <select id="alertCondition" aria-label="警示條件">
+                <option value="PRICE_ABOVE">價格高於</option>
+                <option value="PRICE_BELOW">價格低於</option>
+                <option value="CHANGE_PCT_ABOVE">漲幅達到（百分點）</option>
+                <option value="CHANGE_PCT_BELOW">跌幅達到（百分點）</option>
+                <option value="RISK_AT_LEAST">風險至少為</option>
+                <option value="DATA_QUALITY_NOT_OK">資料品質不是 OK</option>
+              </select>
+            </label>
+            <label id="alertThresholdLabel">門檻
+              <input id="alertThreshold" type="number" step="0.01" placeholder="例如 200 或 3" aria-label="警示門檻" />
+            </label>
+            <button id="createWatchAlert" type="button">新增規則</button>
+          </div>
+          <div id="watchAlertStatus" class="footer-note">登入後可保存與評估警示規則。</div>
+          <div id="watchAlertNotificationPreferences" class="footer-note"></div>
+          <div id="watchAlertRows" class="alert-table"></div>
         </div>
       </section>
 
@@ -931,8 +1036,17 @@
             <button data-question="目前技術面偏多還是偏空？">技術面方向</button>
             <button data-question="不同模型分歧的原因是什麼？">模型分歧原因</button>
           </div>
-          <input id="chatInput" placeholder="輸入問題，例如：如果跌破 MA20 代表什麼？" />
+          <div class="row chat-composer" style="margin-top:12px">
+            <input id="chatInput" placeholder="輸入任何股票研究問題，例如：供應鏈集中度會帶來哪些風險？" aria-label="AI 問題" />
+            <button id="sendChat" type="button">送出</button>
+          </div>
+          <p class="footer-note">可輸入任意股票研究問題，不限於上方快捷問題；按 Enter 也能送出。若要回答即時資料，請切換真實 API 並完成登入與 provider 設定。</p>
           <div class="card" style="margin-top:12px;background:#0c1827" id="chatAnswer"></div>
+          <div class="hint-box" id="chatPlan">尚未執行後端工具路由。</div>
+          <div class="evidence-block">
+            <h3>AI 問答工具結果</h3>
+            <div id="chatTools" class="muted">尚未執行工具查詢。</div>
+          </div>
           <div class="evidence-block">
             <h3>AI 問答參考證據</h3>
             <div id="chatEvidence" class="muted">尚未載入檢索證據。</div>
@@ -945,10 +1059,31 @@
           <div class="card">
             <h2>策略回測</h2>
             <div class="grid">
-              <input id="minScore" type="number" min="0" max="100" value="70" aria-label="最低 AI 分數" />
+              <label for="minScore">最低訊號分數（技術代理，0～100）</label>
+              <input id="minScore" type="number" min="0" max="100" value="70" aria-label="最低訊號分數" />
+              <label for="minProb">最低上漲機率（0～1）</label>
               <input id="minProb" type="number" min="0" max="1" step="0.01" value="0.60" aria-label="最低上漲機率" />
+              <label for="maxRisk">最高風險等級</label>
+              <select id="maxRisk" aria-label="最高風險等級">
+                <option value="LOW">低（LOW）</option>
+                <option value="MEDIUM" selected>中（MEDIUM）</option>
+                <option value="HIGH">高（HIGH）</option>
+              </select>
+              <label for="holdingDays">持有天數（1～60）</label>
+              <input id="holdingDays" type="number" min="1" max="60" value="5" aria-label="持有天數" />
+              <label for="commissionRate">單邊手續費率（0～0.05）</label>
+              <input id="commissionRate" type="number" min="0" max="0.05" step="0.0001" value="0" aria-label="單邊手續費率" />
+              <label for="taxRate">賣出稅率（0～0.05）</label>
+              <input id="taxRate" type="number" min="0" max="0.05" step="0.0001" value="0" aria-label="賣出稅率" />
+              <label for="slippageRate">單邊滑價率（0～0.05）</label>
+              <input id="slippageRate" type="number" min="0" max="0.05" step="0.0001" value="0" aria-label="單邊滑價率" />
+              <label for="takeProfitRate">停利率（0=停用）</label>
+              <input id="takeProfitRate" type="number" min="0" max="2" step="0.01" value="0" aria-label="停利率" />
+              <label for="stopLossRate">停損率（0=停用）</label>
+              <input id="stopLossRate" type="number" min="0" max="2" step="0.01" value="0" aria-label="停損率" />
               <button id="runBacktest">執行回測</button>
             </div>
+            <div id="backtestConditions" class="hint-box" style="margin-top:12px"></div>
             <div id="backtestStatus" class="backtest-status"></div>
           </div>
           <div class="card">
@@ -968,7 +1103,11 @@
               </div>
             </div>
             <table><tbody id="backtestRows"></tbody></table>
-            <p class="footer-note" id="backtestNote">回測使用模擬歷史資料，不代表未來績效。</p>
+            <div class="evidence-block" style="margin-top:12px">
+              <h3>交易明細</h3>
+              <div id="backtestTrades" class="evidence-empty">尚未取得逐筆歷史交易。</div>
+            </div>
+            <p class="footer-note" id="backtestNote">使用有日期的收盤價進行歷史價格回放；訊號為技術動能代理，不是現在日期的 AI 預測，也不代表未來績效。</p>
           </div>
         </div>
       </section>
@@ -1016,6 +1155,8 @@
               <button id="refreshAuth">刷新身分</button>
             </div>
           </div>
+          <div id="googleSignIn" class="watch-actions" style="margin-top:8px" hidden></div>
+          <p id="googleAuthHint" class="footer-note">Google 登入尚未啟用；可使用 Email／密碼登入。</p>
           <div class="grid cols-3" style="margin-top:8px">
             <input id="openAiApiKey" placeholder="OpenAI API Key（本機儲存）" aria-label="OpenAI API Key" />
             <input id="geminiApiKey" placeholder="Gemini API Key（本機儲存）" aria-label="Gemini API Key" />
@@ -1109,7 +1250,7 @@
   </div>
 
   <script>
-    const providers = ["OPENAI", "CLAUDE", "GEMINI", "DEEPSEEK", "MIMO"];
+    const providers = ["OPENAI", "GEMINI", "DEEPSEEK", "MIMO"];
     const stocks = {
       US: {
         AAPL: stock("AAPL", "Apple Inc.", "US", "USD", 217.63, 2.14, [204, 207, 206, 211, 210, 214, 216, 215, 218]),
@@ -1133,6 +1274,20 @@
       realStock: null,
       realAi: null,
       realEvidence: [],
+      newsScore: null,
+      newsScoreError: "",
+      watchAlertCenter: null,
+      watchAlertScheduler: null,
+      watchAlertNotifications: null,
+      watchAlertNotificationPreferences: null,
+      watchAlertError: "",
+      chatHistory: [],
+      chatAnswer: "",
+      chatEvidence: [],
+      chatSource: "",
+      chatIntent: "",
+      chatStatus: "",
+      chatTools: [],
       realSearch: { query: "", results: [], timer: null, token: 0 }
     };
     let keyEntryResolver = null;
@@ -1142,11 +1297,43 @@
 
     function stock(symbol, name, market, currency, price, changePct, prices) {
       const base = symbol.charCodeAt(0) % 9;
+      const technicalQuality = localTechnicalQuality(prices.length, "mock");
+      const predictionQuality = localPredictionQuality(prices.length, "mock");
       return {
         symbol, name, market, currency, price, changePct, prices,
         timezone: market === "TW" ? "Asia/Taipei" : "America/New_York",
-        tech: { MA5: price * .99, MA20: price * .965, MA60: price * .928, RSI14: 58 + base, MACD: changePct > 0 ? "BULLISH" : "NEUTRAL", ATR14: price * .026 },
-        prediction: { upProbability: Math.max(.42, Math.min(.78, .58 + changePct / 40)), expectedReturn: changePct / 100 * .8, volatility: .028 + base / 1000, risk: Math.abs(changePct) > 2.5 ? "HIGH" : "MEDIUM" }
+        tech: { MA5: price * .99, MA20: price * .965, MA60: price * .928, RSI14: 58 + base, MACD: changePct > 0 ? "BULLISH" : "NEUTRAL", ATR14: price * .026, dataQuality: technicalQuality },
+        prediction: { upProbability: Math.max(.42, Math.min(.78, .58 + changePct / 40)), expectedReturn: changePct / 100 * .8, volatility: .028 + base / 1000, risk: Math.abs(changePct) > 2.5 ? "HIGH" : "MEDIUM", dataQuality: predictionQuality }
+      };
+    }
+
+    function localTechnicalQuality(sampleCount, source) {
+      const thresholds = { MA5: 5, MA20: 20, MA60: 60, RSI14: 15, MACD: 26, ATR14: 15 };
+      const unavailableIndicators = Object.entries(thresholds)
+        .filter(([, required]) => sampleCount < required)
+        .map(([name]) => name);
+      return {
+        sampleCount,
+        requiredSampleCount: 60,
+        dataFrom: null,
+        dataTo: null,
+        source,
+        status: "MOCK",
+        unavailableIndicators
+      };
+    }
+
+    function localPredictionQuality(sampleCount, source) {
+      return {
+        sampleCount,
+        requiredSampleCount: 2,
+        dataFrom: null,
+        dataTo: null,
+        source,
+        status: "MOCK",
+        unavailableIndicators: sampleCount < 2
+          ? ["MOMENTUM", "VOLATILITY", "UP_PROBABILITY", "EXPECTED_RETURN", "RISK_LEVEL"]
+          : []
       };
     }
 
@@ -1177,6 +1364,8 @@
         prices
       );
       generated.source = "mock-generated";
+      generated.tech.dataQuality.source = generated.source;
+      generated.prediction.dataQuality.source = generated.source;
       return generated;
     }
 
@@ -1296,6 +1485,8 @@
         authUserEmail: "",
         authExpiresAt: 0,
         authProvider: "",
+        googleConfigured: false,
+        googleClientId: "",
         preferredProvider: "",
         hasStoredOpenAiApiKey: false,
         hasStoredGeminiApiKey: false,
@@ -1317,6 +1508,7 @@
       const persisted = {
         ...state.settings,
         authToken: state.settings.authToken ? "cookie" : "",
+        googleClientId: "",
         openAiApiKey: "",
         geminiApiKey: "",
         deepSeekApiKey: "",
@@ -1404,6 +1596,18 @@
       return unwrap(await response.json());
     }
 
+    async function apiDelete(path) {
+      const response = await fetch(`${state.settings.apiBaseUrl}${path}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: authHeaders({ Accept: "application/json" })
+      }).catch(error => {
+        throw new Error(explainFetchFailure(error, path));
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
+      return unwrap(await response.json());
+    }
+
     async function refreshHealthStatus(baseUrlOverride) {
       const baseUrl = (baseUrlOverride || state.settings.apiBaseUrl || "").replace(/\/+$/, "");
       const response = await fetch(`${baseUrl}/health`, { credentials: "same-origin", headers: authHeaders({ Accept: "application/json" }) });
@@ -1438,10 +1642,11 @@
     }
 
     function setProvider(provider) {
-      state.provider = provider;
+      const normalized = String(provider || "").trim().toUpperCase();
+      state.provider = providers.includes(normalized) ? normalized : "OPENAI";
       const providerSelect = document.getElementById("provider");
       if (providerSelect) {
-        providerSelect.value = provider;
+        providerSelect.value = state.provider;
       }
     }
 
@@ -1673,6 +1878,330 @@
       const data = await apiGet("/watchlist");
       state.watch = data.map(item => `${item.market}:${item.symbol}`);
       renderWatch();
+      await loadWatchlistAlerts();
+    }
+
+    async function loadWatchlistAlerts() {
+      if (state.settings.mode !== "real" || !state.settings.authToken) {
+        state.watchAlertCenter = null;
+        state.watchAlertScheduler = null;
+        state.watchAlertNotifications = null;
+        state.watchAlertNotificationPreferences = null;
+        state.watchAlertError = "";
+        renderWatchAlerts();
+        return;
+      }
+      try {
+        state.watchAlertCenter = await apiGet("/watchlist/alerts");
+        state.watchAlertError = "";
+      } catch (error) {
+        state.watchAlertCenter = null;
+        state.watchAlertError = error.message;
+      }
+      try {
+        state.watchAlertScheduler = await apiGet("/watchlist/alerts/scheduler");
+      } catch {
+        state.watchAlertScheduler = null;
+      }
+      try {
+        state.watchAlertNotifications = await apiGet("/watchlist/alerts/notifications?limit=10");
+      } catch {
+        state.watchAlertNotifications = null;
+      }
+      try {
+        state.watchAlertNotificationPreferences = await apiGet("/watchlist/alerts/notification-preferences");
+      } catch {
+        state.watchAlertNotificationPreferences = null;
+      }
+      renderWatchAlerts();
+    }
+
+    function watchAlertConditionLabel(condition) {
+      return {
+        PRICE_ABOVE: "價格高於",
+        PRICE_BELOW: "價格低於",
+        CHANGE_PCT_ABOVE: "漲幅達到",
+        CHANGE_PCT_BELOW: "跌幅達到",
+        RISK_AT_LEAST: "風險至少",
+        DATA_QUALITY_NOT_OK: "資料品質不是 OK"
+      }[condition] || condition || "未知條件";
+    }
+
+    function watchAlertThresholdText(condition, threshold) {
+      if (condition === "DATA_QUALITY_NOT_OK") return "不適用";
+      if (condition === "RISK_AT_LEAST") return ({ 1: "LOW", 2: "MEDIUM", 3: "HIGH" })[Number(threshold)] || String(threshold ?? "--");
+      const value = Number(threshold);
+      if (!Number.isFinite(value)) return "--";
+      return `${value}${condition.startsWith("CHANGE") ? "%" : ""}`;
+    }
+
+    function updateWatchAlertThresholdField() {
+      const condition = document.getElementById("alertCondition")?.value;
+      const label = document.getElementById("alertThresholdLabel");
+      if (!label) return;
+      if (condition === "DATA_QUALITY_NOT_OK") {
+        label.innerHTML = "<span>門檻</span><select id=\"alertThreshold\" aria-label=\"警示門檻\" disabled><option value=\"\">不適用</option></select>";
+      } else if (condition === "RISK_AT_LEAST") {
+        label.innerHTML = "<span>門檻</span><select id=\"alertThreshold\" aria-label=\"風險門檻\"><option value=\"1\">LOW</option><option value=\"2\" selected>MEDIUM</option><option value=\"3\">HIGH</option></select>";
+      } else {
+        const placeholder = condition?.startsWith("CHANGE") ? "例如 3（百分點）" : "例如 200";
+        label.innerHTML = `<span>門檻</span><input id=\"alertThreshold\" type=\"number\" step=\"0.01\" placeholder=\"${placeholder}\" aria-label=\"警示門檻\" />`;
+      }
+    }
+
+    function renderWatchAlertForm() {
+      const select = document.getElementById("alertSymbol");
+      if (!select) return;
+      const current = select.value;
+      select.innerHTML = state.watch.map(key => {
+        const [market, symbol] = key.split(":");
+        const stock = watchStock(key);
+        return `<option value=\"${escapeHtml(key)}\">${escapeHtml(stock?.name || symbol)} · ${escapeHtml(symbol)}</option>`;
+      }).join("");
+      if (state.watch.includes(current)) select.value = current;
+      updateWatchAlertThresholdField();
+    }
+
+    function renderWatchAlerts() {
+      renderWatchAlertForm();
+      const status = document.getElementById("watchAlertStatus");
+      const rows = document.getElementById("watchAlertRows");
+      const preferencesNode = document.getElementById("watchAlertNotificationPreferences");
+      if (!status || !rows) return;
+      if (state.settings.mode !== "real" || !state.settings.authToken) {
+        status.textContent = "切換真實 API 並登入後，可保存與評估自選股警示。";
+        if (preferencesNode) preferencesNode.innerHTML = "";
+        rows.innerHTML = "<div class=\"alert-empty\">目前沒有登入帳號；mock 模式不會假造警示觸發。</div>";
+        return;
+      }
+      if (state.watchAlertError) {
+        status.textContent = `警示中心讀取失敗：${state.watchAlertError}`;
+        rows.innerHTML = "<div class=\"alert-empty\">尚未取得後端警示評估。</div>";
+        return;
+      }
+      const center = state.watchAlertCenter;
+      const scheduler = state.watchAlertScheduler;
+      const notifications = state.watchAlertNotifications;
+      const preferences = state.watchAlertNotificationPreferences;
+      const evaluations = Array.isArray(center?.evaluations) ? center.evaluations : [];
+      const recentEvents = Array.isArray(center?.recentEvents) ? center.recentEvents : [];
+      status.textContent = center
+        ? `已評估 ${evaluations.length} 條規則；目前觸發 ${Number(center.triggeredCount || 0)} 條，本次新觸發 ${Number(center.newTriggerCount || 0)} 條。${watchAlertSchedulerText(scheduler)} 歷史只保留本機狀態變更，未發送外部通知。`
+        : "尚未評估警示規則。";
+      if (preferencesNode) preferencesNode.innerHTML = renderWatchAlertNotificationPreferences(preferences);
+      if (!evaluations.length) {
+        rows.innerHTML = recentEvents.length
+          ? `<div class="alert-empty">目前沒有可評估的規則。</div>${renderWatchAlertHistory(recentEvents)}${renderWatchAlertNotifications(notifications)}`
+          : "<div class=\"alert-empty\">尚未建立警示規則。請先選擇自選股、條件與門檻後新增。</div>";
+        return;
+      }
+      rows.innerHTML = `<table><thead><tr><th>股票</th><th>條件</th><th>目前值／狀態</th><th>結果</th><th>來源／資料狀態</th><th>操作</th></tr></thead><tbody>${evaluations.map(item => {
+        const statusClass = String(item.status || "").toLowerCase();
+        const current = item.currentLabel || (item.currentValue == null ? "--" : Number(item.currentValue).toFixed(2));
+        const enabled = item.status !== "DISABLED";
+        const newLabel = item.newlyTriggered ? " · 本次新觸發" : "";
+        const lastTriggered = item.lastTriggeredAt ? `<br><span class="muted">上次觸發 ${escapeHtml(formatEvidenceDate(item.lastTriggeredAt))}</span>` : "";
+        return `<tr><td><strong>${escapeHtml(item.symbol || "--")}</strong><br><span class=\"muted\">${escapeHtml(item.name || "")}</span></td><td>${escapeHtml(watchAlertConditionLabel(item.condition))}<br><span class=\"muted\">門檻 ${escapeHtml(watchAlertThresholdText(item.condition, item.threshold))}</span></td><td>${escapeHtml(current)}<br><span class=\"muted\">${escapeHtml(item.message || "")}</span></td><td class=\"${statusClass}\">${escapeHtml(item.status || "UNKNOWN")}${escapeHtml(newLabel)}${lastTriggered}</td><td>${escapeHtml(item.source || "unknown")}<br><span class=\"muted\">${escapeHtml(item.dataStatus || "UNKNOWN")}</span></td><td><button data-alert-toggle=\"${escapeHtml(item.ruleId)}\" data-alert-enabled=\"${enabled ? "true" : "false"}\">${enabled ? "停用" : "啟用"}</button> <button data-alert-delete=\"${escapeHtml(item.ruleId)}\">刪除</button></td></tr>`;
+      }).join("")}</tbody></table>${renderWatchAlertHistory(recentEvents)}${renderWatchAlertNotifications(notifications)}`;
+    }
+
+    function watchAlertSchedulerText(scheduler) {
+      if (!scheduler) return "";
+      const delayMinutes = Number(scheduler.fixedDelayMs) > 0
+        ? Math.max(1, Math.round(Number(scheduler.fixedDelayMs) / 60000))
+        : "--";
+      const lastRun = scheduler.lastCompletedAt ? `，上次完成 ${formatEvidenceDate(scheduler.lastCompletedAt)}` : "，尚未執行";
+      const errors = Number(scheduler.lastErrorCount || 0) > 0 ? `，最近錯誤 ${Number(scheduler.lastErrorCount)}` : "";
+      return `排程 ${scheduler.enabled ? "開啟" : "關閉"}（每 ${delayMinutes} 分鐘，${escapeHtml(scheduler.notificationMode || "LOCAL_ONLY")}）${lastRun}${errors} `;
+    }
+
+    function renderWatchAlertHistory(events) {
+      if (!Array.isArray(events) || !events.length) return "";
+      const items = events.slice(0, 10).map(event => {
+        const timestamp = event.createdAt ? formatEvidenceDate(event.createdAt) : "未知時間";
+        return `<li><strong>${escapeHtml(event.symbol || "--")}</strong> · ${escapeHtml(event.status || "UNKNOWN")} · ${escapeHtml(timestamp)}<br><span class="muted">${escapeHtml(event.message || "")}（僅本機紀錄）</span></li>`;
+      }).join("");
+      return `<div class="footer-note"><strong>最近狀態變更</strong><ul class="muted" style="margin:6px 0 0 18px;padding:0">${items}</ul></div>`;
+    }
+
+    function renderWatchAlertNotifications(response) {
+      const notifications = Array.isArray(response?.notifications) ? response.notifications : [];
+      if (!notifications.length) return "";
+      const unread = Number(response?.unreadCount || 0);
+      const hasRead = notifications.some(item => String(item.state || "UNREAD").toUpperCase() === "READ");
+      const items = notifications.slice(0, 10).map(item => {
+        const read = String(item.state || "UNREAD").toUpperCase() === "READ";
+        const timestamp = item.createdAt ? formatEvidenceDate(item.createdAt) : "未知時間";
+        return `<li><strong>${escapeHtml(item.title || item.symbol || "警示")}</strong> · ${escapeHtml(timestamp)}<br><span class="muted">${escapeHtml(item.message || "")} · ${escapeHtml(item.channel || "LOCAL_ONLY")}</span> <button data-alert-notification-id="${escapeHtml(item.id)}" data-alert-notification-read="${read ? "true" : "false"}">${read ? "標為未讀" : "標為已讀"}</button></li>`;
+      }).join("");
+      return `<div class="footer-note"><strong>本機通知佇列（未讀 ${unread}）</strong> ${hasRead ? '<button data-alert-clear-read="true">清除已讀</button>' : ''}<ul class="muted" style="margin:6px 0 0 18px;padding:0">${items}</ul></div>`;
+    }
+
+    function renderWatchAlertNotificationPreferences(response) {
+      const preferences = response?.preferences;
+      if (!preferences) return "";
+      const localEnabled = preferences.localEnabled === true;
+      const externalReason = response.externalChannelsAvailable
+        ? "外部通道已可用。"
+        : (response.externalBlockReason || "外部通道尚未設定，維持本機模式。");
+      return `<strong>通知偏好</strong>：本機通知 ${localEnabled ? "開啟" : "關閉"} <button data-alert-local-notification="${localEnabled ? "true" : "false"}">${localEnabled ? "關閉本機通知" : "開啟本機通知"}</button> <span class="muted">Email／推播仍為停用（${escapeHtml(externalReason)}）</span>`;
+    }
+
+    async function toggleWatchAlertLocalNotification(enabled) {
+      try {
+        await apiPut("/watchlist/alerts/notification-preferences", { localEnabled: !enabled });
+        await loadWatchlistAlerts();
+      } catch (error) {
+        state.watchAlertError = `更新通知偏好失敗：${error.message}`;
+        renderWatchAlerts();
+      }
+    }
+
+    async function toggleWatchAlertNotification(id, read) {
+      try {
+        await apiPut(`/watchlist/alerts/notifications/${encodeURIComponent(id)}`, { read: !read });
+        await loadWatchlistAlerts();
+      } catch (error) {
+        state.watchAlertError = `更新通知狀態失敗：${error.message}`;
+        renderWatchAlerts();
+      }
+    }
+
+    async function clearReadWatchAlertNotifications() {
+      try {
+        await apiDelete("/watchlist/alerts/notifications/read");
+        await loadWatchlistAlerts();
+      } catch (error) {
+        state.watchAlertError = `清除已讀通知失敗：${error.message}`;
+        renderWatchAlerts();
+      }
+    }
+
+    async function createWatchAlert() {
+      if (state.settings.mode !== "real" || !state.settings.authToken) {
+        state.watchAlertError = "請先切換真實 API 並登入。";
+        renderWatchAlerts();
+        return;
+      }
+      const key = document.getElementById("alertSymbol")?.value || "";
+      const [market, symbol] = key.split(":");
+      const condition = document.getElementById("alertCondition")?.value;
+      const thresholdNode = document.getElementById("alertThreshold");
+      const threshold = condition === "DATA_QUALITY_NOT_OK" ? null : Number(thresholdNode?.value);
+      if (!market || !symbol || !condition || (threshold !== null && !Number.isFinite(threshold))) {
+        state.watchAlertError = "請選擇自選股、條件並填寫有效門檻。";
+        renderWatchAlerts();
+        return;
+      }
+      const button = document.getElementById("createWatchAlert");
+      setBusy(button, true, "儲存中...");
+      try {
+        await apiPost("/watchlist/alerts", { market, symbol, condition, threshold, enabled: true });
+        state.watchAlertError = "";
+        await loadWatchlistAlerts();
+        const status = document.getElementById("watchAlertStatus");
+        if (status) status.textContent = `已新增 ${symbol} 的${watchAlertConditionLabel(condition)}規則。`;
+      } catch (error) {
+        state.watchAlertError = `新增警示失敗：${error.message}`;
+        renderWatchAlerts();
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function toggleWatchAlert(id, enabled) {
+      try {
+        await apiPut(`/watchlist/alerts/${encodeURIComponent(id)}`, { enabled: !enabled });
+        await loadWatchlistAlerts();
+      } catch (error) {
+        state.watchAlertError = `更新警示失敗：${error.message}`;
+        renderWatchAlerts();
+      }
+    }
+
+    async function deleteWatchAlert(id) {
+      try {
+        await apiDelete(`/watchlist/alerts/${encodeURIComponent(id)}`);
+        await loadWatchlistAlerts();
+      } catch (error) {
+        state.watchAlertError = `刪除警示失敗：${error.message}`;
+        renderWatchAlerts();
+      }
+    }
+
+    function renderGoogleSignIn() {
+      const container = document.getElementById("googleSignIn");
+      const hint = document.getElementById("googleAuthHint");
+      if (!container || !hint) return;
+      if (!state.settings.googleConfigured || !state.settings.googleClientId) {
+        container.hidden = true;
+        container.innerHTML = "";
+        hint.textContent = "Google 登入尚未啟用；可使用 Email／密碼登入。";
+        return;
+      }
+      if (!window.google?.accounts?.id) {
+        container.hidden = true;
+        hint.textContent = "Google 登入設定已存在，但 Google Identity Services 尚未載入。";
+        return;
+      }
+      const clientId = state.settings.googleClientId;
+      if (container.dataset.clientId === clientId) {
+        container.hidden = false;
+        hint.textContent = "可使用 Google 登入；Google 僅傳送驗證後的 credential，API key 不會放在前端。";
+        return;
+      }
+      container.innerHTML = "";
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: response => submitGoogleCredential(response?.credential)
+      });
+      window.google.accounts.id.renderButton(container, {
+        theme: "outline",
+        size: "large",
+        text: "signin_with",
+        shape: "rectangular",
+        locale: "zh-TW"
+      });
+      container.dataset.clientId = clientId;
+      container.hidden = false;
+      hint.textContent = "可使用 Google 登入；Google 僅傳送驗證後的 credential，API key 不會放在前端。";
+    }
+
+    async function loadGoogleAuthConfig() {
+      if (state.settings.mode !== "real") {
+        state.settings.googleConfigured = false;
+        state.settings.googleClientId = "";
+        renderGoogleSignIn();
+        return;
+      }
+      try {
+        const config = await apiGetOptional("/auth/google/config");
+        state.settings.googleConfigured = !!config?.configured && !!config?.clientId;
+        state.settings.googleClientId = state.settings.googleConfigured ? String(config.clientId) : "";
+        renderGoogleSignIn();
+      } catch {
+        state.settings.googleConfigured = false;
+        state.settings.googleClientId = "";
+        renderGoogleSignIn();
+      }
+    }
+
+    async function submitGoogleCredential(credential) {
+      if (!credential) {
+        setAuthMessage("Google 登入未取得 credential。", true);
+        return;
+      }
+      try {
+        setAuthMessage("Google 登入驗證中...", false);
+        const result = await apiPost("/auth/google", { credential });
+        persistAuth(result);
+        await loadAccountSettings();
+        await syncWatchlistFromApi();
+        setAuthMessage(`Google 登入成功：${result.user.email}`, false);
+        renderSettings();
+      } catch (error) {
+        setAuthMessage(`Google 登入失敗：${error.message}`, true);
+      }
     }
 
     async function submitAuth(path) {
@@ -1734,6 +2263,11 @@
       state.settings.deepSeekApiKey = "";
       state.settings.mimoApiKey = "";
       state.provider = "OPENAI";
+      state.watchAlertCenter = null;
+      state.watchAlertScheduler = null;
+      state.watchAlertNotifications = null;
+      state.watchAlertNotificationPreferences = null;
+      state.watchAlertError = "";
       setAuthMessage("已登出。", false);
       renderSettings();
       renderWatch();
@@ -1991,13 +2525,14 @@
 
     async function loadRealStock(symbol) {
       const pathSymbol = encodeURIComponent(symbol);
-      const [summary, priceData, techData, predictionData] = await Promise.all([
+      const [summary, priceData, techData, predictionData, lineageData] = await Promise.all([
         apiGet(`/stocks/${state.market}/${pathSymbol}/summary`),
         apiGet(`/stocks/${state.market}/${pathSymbol}/prices?range=1M`),
         apiGet(`/stocks/${state.market}/${pathSymbol}/technical-summary`),
-        apiGet(`/stocks/${state.market}/${pathSymbol}/prediction?horizonDays=5`)
+        apiGet(`/stocks/${state.market}/${pathSymbol}/prediction?horizonDays=5`),
+        apiGet(`/stocks/${state.market}/${pathSymbol}/data-lineage`)
       ]);
-      return toStockShape(symbol, summary, priceData, techData, predictionData);
+      return toStockShape(symbol, summary, priceData, techData, predictionData, lineageData);
     }
 
     async function searchRealStocks(query, force) {
@@ -2047,6 +2582,8 @@
         result.prices.length ? result.prices : [result.lastPrice || 0]
       );
       stocks[market][symbol].source = result.source;
+      stocks[market][symbol].tech.dataQuality.source = result.source;
+      stocks[market][symbol].prediction.dataQuality.source = result.source;
       return result;
     }
 
@@ -2103,15 +2640,19 @@
         analysis,
         comparison: {
           ...comparison,
-          results: (comparison.results || []).map(item => ({
-            provider: item.provider,
-            trend: item.trend,
-            score: Number(item.aiScore ?? item.score),
-            bullish: Math.round(Number(item.bullishProbability ?? 0) * 100),
-            risk: item.riskLevel || item.risk,
-            summary: item.summary,
-            source: item.source || "mock-ai"
-          }))
+          results: (Array.isArray(comparison.results) ? comparison.results : []).map(item => {
+            const score = boundedMetric(item.aiScore ?? item.score, 0, 100);
+            const bullishProbability = boundedMetric(item.bullishProbability, 0, 1);
+            return {
+              provider: item.provider,
+              trend: item.trend,
+              score,
+              bullish: bullishProbability == null ? null : Math.round(bullishProbability * 100),
+              risk: item.riskLevel || item.risk,
+              summary: item.summary,
+              source: item.source || "mock-ai"
+            };
+          })
         }
       };
     }
@@ -2126,6 +2667,31 @@
         publishedFrom: new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString(),
         publishedTo: new Date().toISOString()
       });
+    }
+
+    async function loadNewsScore() {
+      const button = document.getElementById("loadNewsScore");
+      if (state.settings.mode !== "real" || !state.realStock) {
+        state.newsScore = null;
+        state.newsScoreError = "請切換真實 API，並先登入、抓取或匯入新聞後再評估。";
+        render();
+        return;
+      }
+      setBusy(button, true, "評估中...");
+      state.newsScoreError = "";
+      try {
+        state.newsScore = await apiGet(`/stocks/${state.market}/${encodeURIComponent(state.symbol)}/news-score?limit=5`);
+        state.settings.lastDataLoad = `新聞評分 OK ${state.symbol}`;
+        saveSettings();
+      } catch (error) {
+        state.newsScore = null;
+        state.newsScoreError = `新聞評分失敗：${error.message}`;
+        state.settings.lastDataLoad = state.newsScoreError;
+        saveSettings();
+      } finally {
+        setBusy(button, false);
+        render();
+      }
     }
 
     async function refreshRealAnalysis() {
@@ -2145,51 +2711,113 @@
       render();
     }
 
-    function toStockShape(symbol, summary, priceData, techData, predictionData) {
+    function realPricePoints(priceData) {
+      const raw = Array.isArray(priceData)
+        ? priceData
+        : priceData && typeof priceData === "object"
+          ? (Array.isArray(priceData.prices) ? priceData.prices : priceData.items)
+          : null;
+      if (!Array.isArray(raw)) return [];
+      return raw.map(item => {
+        const object = item && typeof item === "object" ? item : null;
+        return {
+          close: Number(object ? object.close ?? object.price ?? object.lastPrice : item),
+          date: object ? String(object.date || object.tradingDate || object.time || "") : "",
+          source: object ? String(object.source || "") : ""
+        };
+      }).filter(point => Number.isFinite(point.close) && point.close > 0);
+    }
+
+    function realTechnicalQuality(sampleCount, source) {
+      const quality = localTechnicalQuality(sampleCount, source);
+      const isMock = String(source || "").toLowerCase().startsWith("mock");
+      return {
+        ...quality,
+        status: isMock ? "MOCK" : sampleCount === 0 ? "INSUFFICIENT_DATA" : sampleCount === 1 ? "SNAPSHOT_ONLY" : sampleCount < 60 ? "PARTIAL" : "OK",
+        source
+      };
+    }
+
+    function realPredictionQuality(sampleCount, source) {
+      const quality = localPredictionQuality(sampleCount, source);
+      const isMock = String(source || "").toLowerCase().startsWith("mock");
+      return {
+        ...quality,
+        status: isMock ? "MOCK" : sampleCount === 0 ? "INSUFFICIENT_DATA" : sampleCount === 1 ? "SNAPSHOT_ONLY" : "OK",
+        source
+      };
+    }
+
+    function toStockShape(symbol, summary, priceData, techData, predictionData, lineageData) {
       const fallback = stocks[state.market][symbol] || stock(symbol, symbol, state.market, state.market === "TW" ? "TWD" : "USD", 0, 0, [0, 0, 0]);
-      const price = summary.priceSnapshot || summary.price || summary;
-      const rawPrices = priceData.prices || priceData.items || priceData;
-      const prices = Array.isArray(rawPrices) ? rawPrices.map(item => Number(item.close ?? item.price ?? item.lastPrice ?? item)).filter(Number.isFinite) : fallback.prices;
-      const priceDates = Array.isArray(rawPrices) ? rawPrices.map(item => typeof item === "object" ? String(item.date || item.tradingDate || item.time || "") : "").filter(Boolean) : [];
-      const lastPrice = Number(price.lastPrice ?? price.price ?? summary.lastPrice ?? fallback.price);
-      const changePct = Number(price.changePercent ?? summary.changePercent ?? fallback.changePct);
+      const safeSummary = summary && typeof summary === "object" ? summary : {};
+      const price = safeSummary.priceSnapshot || safeSummary.price || safeSummary;
+      const points = realPricePoints(priceData);
+      const snapshotCandidate = Number(price.lastPrice ?? price.price ?? safeSummary.lastPrice);
+      const snapshotPrice = Number.isFinite(snapshotCandidate) && snapshotCandidate > 0 ? snapshotCandidate : null;
+      const prices = points.length ? points.map(point => point.close) : snapshotPrice == null ? [] : [snapshotPrice];
+      // Keep one date slot per price slot. Filtering dates independently would
+      // shift labels when an upstream bar has a close but no date.
+      const priceDates = points.length
+        ? points.map(point => point.date)
+        : snapshotPrice == null
+          ? []
+          : [String(price.updatedAt || safeSummary.updatedAt || "")];
+      const lastPrice = snapshotPrice == null ? 0 : snapshotPrice;
+      const changeCandidate = Number(price.changePercent ?? price.changePct ?? safeSummary.changePercent);
+      const changePct = Number.isFinite(changeCandidate) ? changeCandidate : 0;
       const prediction = predictionData || {};
       const tech = techData || {};
+      const source = safeSummary.source || "real-api";
+      const technicalQuality = tech.dataQuality || realTechnicalQuality(prices.length, source);
+      const predictionQuality = prediction.dataQuality || realPredictionQuality(prices.length, source);
       return {
         ...fallback,
-        source: summary.source || "real-api",
-        symbol: summary.symbol || price.symbol || symbol,
-        name: summary.name || summary.companyName || fallback.name,
-        currency: summary.currency || price.currency || fallback.currency,
-        timezone: summary.timezone || fallback.timezone,
-        price: Number.isFinite(lastPrice) ? lastPrice : fallback.price,
-        changePct: Number.isFinite(changePct) ? changePct : fallback.changePct,
-        prices: prices.length ? prices : fallback.prices,
+        source,
+        symbol: safeSummary.symbol || price.symbol || symbol,
+        name: safeSummary.name || safeSummary.companyName || fallback.name,
+        currency: safeSummary.currency || price.currency || fallback.currency,
+        timezone: safeSummary.timezone || fallback.timezone,
+        price: lastPrice,
+        changePct,
+        prices,
         priceDates,
-        updatedAt: summary.updatedAt || price.updatedAt || prediction.generatedAt || new Date().toISOString(),
+        dataLineage: lineageData || {},
+        updatedAt: safeSummary.updatedAt || price.updatedAt || prediction.generatedAt || "",
         tech: {
           MA5: Number(tech.ma5 ?? tech.MA5 ?? fallback.tech.MA5),
           MA20: Number(tech.ma20 ?? tech.MA20 ?? fallback.tech.MA20),
           MA60: Number(tech.ma60 ?? tech.MA60 ?? fallback.tech.MA60),
           RSI14: Number(tech.rsi14 ?? tech.RSI14 ?? fallback.tech.RSI14),
           MACD: tech.macdSignal || tech.MACD || fallback.tech.MACD,
-          ATR14: Number(tech.atr14 ?? tech.ATR14 ?? fallback.tech.ATR14)
+          ATR14: Number(tech.atr14 ?? tech.ATR14 ?? fallback.tech.ATR14),
+          dataQuality: technicalQuality
         },
         prediction: {
+          horizonDays: Number(prediction.horizonDays ?? fallback.prediction.horizonDays ?? 5),
           upProbability: Number(prediction.upProbability ?? fallback.prediction.upProbability),
           expectedReturn: Number(prediction.expectedReturn ?? fallback.prediction.expectedReturn),
           volatility: Number(prediction.volatility ?? fallback.prediction.volatility),
           risk: prediction.riskLevel || prediction.risk || fallback.prediction.risk,
-          modelVersion: prediction.modelVersion || fallback.prediction.modelVersion || "api"
+          modelVersion: prediction.modelVersion || fallback.prediction.modelVersion || "api",
+          dataQuality: predictionQuality
         }
       };
     }
 
     function modelResults(s) {
-      if (state.settings.mode === "real" && state.realAi?.comparison?.results?.length) {
-        return state.realAi.comparison.results.map(item => state.failedProviders.includes(item.provider)
-          ? { provider: item.provider, failed: true, error: "模型回應逾時，已從共識分數排除。" }
-          : item);
+      if (state.settings.mode === "real") {
+        if (Array.isArray(state.realAi?.comparison?.results)) {
+          return state.realAi.comparison.results.map(item => state.failedProviders.includes(item.provider)
+            ? { provider: item.provider, failed: true, source: "unavailable-ai", error: "模型回應逾時，已從共識分數排除。" }
+            : item);
+        }
+        return providers.map(provider => ({
+          provider,
+          failed: true,
+          source: "unavailable-ai",
+          error: "尚未取得真實模型結果，未使用前端模擬分數。"
+        }));
       }
       const seed = s.symbol.length + Math.round(s.changePct * 10);
       return providers.map((provider, i) => {
@@ -2209,6 +2837,30 @@
       });
     }
 
+    function analysisViewValues(realAnalysis, active, prediction) {
+      const activeBullish = boundedMetric(active?.bullish, 0, 100);
+      const fallbackProbability = activeBullish != null
+        ? activeBullish / 100
+        : qualityUnavailable(prediction?.dataQuality, "UP_PROBABILITY")
+          ? NaN
+          : Number(prediction?.upProbability);
+      const rawProbability = realAnalysis?.bullishProbability ?? realAnalysis?.upProbability;
+      const probabilityCandidate = rawProbability == null
+        ? fallbackProbability
+        : boundedMetric(rawProbability, 0, 1);
+      const rawScore = realAnalysis?.aiScore ?? active?.score;
+      const scoreCandidate = boundedMetric(rawScore, 0, 100);
+      const predictionRisk = qualityUnavailable(prediction?.dataQuality, "RISK_LEVEL") ? "UNKNOWN" : prediction?.risk;
+      const riskCandidate = String(realAnalysis?.riskLevel ?? active?.risk ?? predictionRisk ?? "UNKNOWN").toUpperCase();
+      return {
+        trend: realAnalysis?.trend || active?.trend || "未知",
+        score: scoreCandidate,
+        probability: Number.isFinite(probabilityCandidate) ? probabilityCandidate : null,
+        risk: ["LOW", "MEDIUM", "HIGH"].includes(riskCandidate) ? riskCandidate : "UNKNOWN",
+        source: realAnalysis?.source || active?.source || "mock-ai"
+      };
+    }
+
     function priceClass(s) {
       return `${s.market === "TW" ? "tw " : ""}${s.changePct >= 0 ? "up" : "down"}`;
     }
@@ -2226,11 +2878,12 @@
     }
 
     function isMockAiSource(source) {
-      return !source || String(source).startsWith("mock-ai");
+      return !source || String(source).startsWith("mock-ai") || source === "unavailable-ai";
     }
 
     function aiSourceMessage(source) {
       const value = source || "mock-ai";
+      if (value === "unavailable-ai") return "尚未取得真實模型結果；未使用前端模擬分數，請先完成登入、API key 與 provider 驗證。";
       if (value === "mock-ai:no-gemini-key") return "後端沒有收到 Gemini Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
       if (value === "mock-ai:no-openai-key") return "後端沒有收到 OpenAI Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
       if (value === "mock-ai:no-deepseek-key") return "後端沒有收到 DeepSeek Key，請確認已按「儲存 AI Key」或已重新整理最新版頁面。";
@@ -2251,6 +2904,42 @@
 
     function trendLabel(value) {
       return { BULLISH: "偏多", NEUTRAL: "中性", BEARISH: "偏空" }[value] || value;
+    }
+
+    function qualityUnavailable(quality, key) {
+      return Array.isArray(quality?.unavailableIndicators) && quality.unavailableIndicators.includes(key);
+    }
+
+    function qualityStatusLabel(status) {
+      return {
+        OK: "完整",
+        PARTIAL: "部分可用",
+        SNAPSHOT_ONLY: "僅單點快照",
+        INSUFFICIENT_DATA: "資料不足",
+        MOCK: "模擬資料",
+        UNKNOWN: "未知"
+      }[String(status || "UNKNOWN").toUpperCase()] || String(status || "未知");
+    }
+
+    function qualityText(quality, label) {
+      const value = quality || {};
+      const sampleCount = Number.isFinite(Number(value.sampleCount)) ? Number(value.sampleCount) : 0;
+      const required = Number(value.requiredSampleCount) > 0 ? ` / 至少 ${Number(value.requiredSampleCount)} 筆` : "";
+      const range = value.dataFrom && value.dataTo ? `，區間 ${value.dataFrom}～${value.dataTo}` : "，無完整日期區間";
+      const source = value.source || "unknown";
+      const missing = Array.isArray(value.unavailableIndicators) && value.unavailableIndicators.length
+        ? `，未計算：${value.unavailableIndicators.join("、")}`
+        : "";
+      return `${label}：${qualityStatusLabel(value.status)}，${sampleCount} 筆${required}${range}，來源 ${source}${missing}`;
+    }
+
+    function technicalMetric(s, key, formatter = num) {
+      const quality = s.tech?.dataQuality;
+      return qualityUnavailable(quality, key) ? "資料不足" : formatter(s.tech?.[key]);
+    }
+
+    function predictionMetricAvailable(s, key) {
+      return !qualityUnavailable(s.prediction?.dataQuality, key);
     }
 
     function clampNumber(value, min, max) {
@@ -2287,6 +2976,17 @@
       return Number.isFinite(numeric) ? numeric : fallback;
     }
 
+    function finiteMetric(value) {
+      if (value === null || value === undefined || value === "") return null;
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    function boundedMetric(value, min, max) {
+      const numeric = finiteMetric(value);
+      return numeric == null || numeric < min || numeric > max ? null : numeric;
+    }
+
     function rsiHint(value) {
       if (!Number.isFinite(value)) return "缺少 RSI";
       if (value >= 70) return "偏熱";
@@ -2296,6 +2996,7 @@
 
     function stockMetrics(s) {
       const tech = s.tech || {};
+      const technicalQuality = tech.dataQuality || {};
       const prediction = s.prediction || {};
       const prices = (s.prices || []).map(Number).filter(Number.isFinite);
       const fallbackPrice = finiteNumber(s.price, 0);
@@ -2304,10 +3005,10 @@
       const last = safePrices[safePrices.length - 1] || fallbackPrice;
       const high = Math.max(...safePrices);
       const low = Math.min(...safePrices);
-      const ma20 = finiteNumber(tech.MA20, NaN);
-      const ma60 = finiteNumber(tech.MA60, NaN);
-      const atr14 = finiteNumber(tech.ATR14, NaN);
-      const rsi14 = finiteNumber(tech.RSI14, NaN);
+      const ma20 = qualityUnavailable(technicalQuality, "MA20") ? NaN : finiteNumber(tech.MA20, NaN);
+      const ma60 = qualityUnavailable(technicalQuality, "MA60") ? NaN : finiteNumber(tech.MA60, NaN);
+      const atr14 = qualityUnavailable(technicalQuality, "ATR14") ? NaN : finiteNumber(tech.ATR14, NaN);
+      const rsi14 = qualityUnavailable(technicalQuality, "RSI14") ? NaN : finiteNumber(tech.RSI14, NaN);
       const periodReturn = seriesReturn(safePrices);
       const rangePct = low ? (high - low) / low : 0;
       const ma20Distance = Number.isFinite(ma20) ? distancePct(last, ma20) : NaN;
@@ -2330,7 +3031,9 @@
         atrPct,
         rsi14,
         histVol,
-        expectedReturn: finiteNumber(prediction.expectedReturn, NaN)
+        expectedReturn: predictionMetricAvailable(s, "EXPECTED_RETURN")
+          ? finiteNumber(prediction.expectedReturn, NaN)
+          : NaN
       };
     }
 
@@ -2362,7 +3065,7 @@
         { key: "MA5", label: "MA5", value: Number(s.tech?.MA5), color: "#ffc857" },
         { key: "MA20", label: "MA20", value: Number(s.tech?.MA20), color: "#6bbcff" },
         { key: "MA60", label: "MA60", value: Number(s.tech?.MA60), color: "#c99cff" }
-      ].filter(item => Number.isFinite(item.value) && item.value > 0);
+      ].filter(item => !qualityUnavailable(s.tech?.dataQuality, item.key) && Number.isFinite(item.value) && item.value > 0);
       const scaleValues = safePrices.concat(technicalLines.map(item => item.value), [s.price || metrics.last]);
       const rawMin = Math.min(...scaleValues);
       const rawMax = Math.max(...scaleValues);
@@ -2397,6 +3100,15 @@
           <text x="670" y="${y + 4}" fill="${item.color}" font-size="12">${item.label} ${num(item.value)}</text>
         `;
       }).join("");
+      const actions = Array.isArray(s.dataLineage?.corporateActions) ? s.dataLineage.corporateActions : [];
+      const actionSvg = actions.map(action => {
+        const actionDate = String(action.date || "");
+        const index = metrics.priceDates.findIndex(date => String(date || "").startsWith(actionDate));
+        if (index < 0) return "";
+        const x = xForIndex(index);
+        const y = clampNumber(yForValue(safePrices[index]), 32, 202);
+        return `<g><line x1="${x}" x2="${x}" y1="18" y2="204" stroke="#ffc857" stroke-opacity=".42" stroke-dasharray="4 5"/><circle cx="${x}" cy="${y}" r="7" fill="#ffc857" stroke="#0a1c23" stroke-width="2"/><text x="${x + 8}" y="${clampNumber(y - 8, 24, 194)}" fill="#ffc857" font-size="11">${escapeHtml(action.type || "ACTION")}</text></g>`;
+      }).join("");
       document.getElementById("priceChart").innerHTML = `
         <defs>
           <linearGradient id="g" x1="0" x2="1"><stop stop-color="#5ff3d2"/><stop offset=".52" stop-color="#6bbcff"/><stop offset="1" stop-color="#ffc857"/></linearGradient>
@@ -2407,6 +3119,7 @@
         <text x="26" y="28" fill="#9dbab7" font-size="12">高 ${num(high)}</text>
         <text x="26" y="214" fill="#9dbab7" font-size="12">低 ${num(low)}</text>
         ${lineSvg}
+        ${actionSvg}
         <polygon class="chart-area" points="${area}" fill="url(#areaG)"/>
         <polyline class="chart-line" points="${points}" fill="none" stroke="url(#g)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)"/>
         ${coords.map((point, i) => `<circle class="chart-dot" style="animation-delay:${i * 55}ms" cx="${point.x}" cy="${point.y}" r="4.5" fill="#edf7ef" stroke="#5ff3d2" stroke-width="2"/>`).join("")}
@@ -2417,14 +3130,16 @@
         <text x="532" y="${clampNumber(latestY, 36, 208)}" fill="#edf7ef" font-size="12">最新 ${num(last)}</text>
         ${xAxisSvg}
       `;
+      const technicalLegend = technicalLines.length
+        ? technicalLines.map(item => `<span class="legend-item" style="color:${item.color}"><i class="legend-swatch"></i>${item.label}</span>`).join("")
+        : `<span class="legend-item muted"><i class="legend-swatch"></i>均線資料不足</span>`;
       document.getElementById("chartLegend").innerHTML = `
         <span class="legend-item" style="color:#5ff3d2"><i class="legend-swatch"></i>價格</span>
         <span class="legend-item" style="color:#edf7ef"><i class="legend-swatch"></i>最新價</span>
         <span class="legend-item" style="color:#ffc857"><i class="legend-swatch"></i>區間高點</span>
         <span class="legend-item" style="color:#ff6b6b"><i class="legend-swatch"></i>區間低點</span>
-        <span class="legend-item" style="color:#ffc857"><i class="legend-swatch"></i>MA5</span>
-        <span class="legend-item" style="color:#6bbcff"><i class="legend-swatch"></i>MA20</span>
-        <span class="legend-item" style="color:#c99cff"><i class="legend-swatch"></i>MA60</span>
+        ${actions.length ? `<span class="legend-item" style="color:#ffc857"><i class="legend-swatch"></i>公司行動</span>` : ""}
+        ${technicalLegend}
       `;
       document.getElementById("chartStats").innerHTML = [
         statCard("區間漲跌", pct(metrics.periodReturn), `${safePrices.length} 個交易日`),
@@ -2437,6 +3152,37 @@
         statCard("預期報酬", pct(metrics.expectedReturn), `5 日 · ${s.prediction?.modelVersion || "model"}`)
       ].join("");
       document.getElementById("chartInsight").textContent = chartInsightText(s, metrics);
+      const datedPrices = metrics.priceDates.filter(Boolean);
+      const dateRange = datedPrices.length === safePrices.length && datedPrices.length
+        ? `日期 ${datedPrices[0]}～${datedPrices[datedPrices.length - 1]}`
+        : "日期未提供（模擬或快照序列）";
+      const lineage = s.dataLineage || {};
+      document.getElementById("chartDataQuality").textContent = `圖表實際繪製 ${safePrices.length} 個價格點；來源 ${s.source || "mock"}；${dateRange}。調整=${lineage.adjustmentStatus || "未驗證"}、完整性=${lineage.integrityStatus || "UNKNOWN"}。均線僅繪製資料品質允許的指標。`;
+      renderDataLineage(s);
+    }
+
+    function renderDataLineage(s) {
+      const lineage = s.dataLineage || {};
+      const actions = Array.isArray(lineage.corporateActions) ? lineage.corporateActions : [];
+      const findings = Array.isArray(lineage.findings) ? lineage.findings : [];
+      const actionMarkup = actions.length
+        ? actions.map(action => `<div class="lineage-action"><strong>${escapeHtml(action.date || "未知日期")} · ${escapeHtml(action.type || "ACTION")}</strong><div>${escapeHtml(action.description || "公司行動")}</div><small class="muted">來源：${escapeHtml(action.source || "unknown")}</small></div>`).join("")
+        : `<div class="evidence-empty">目前期間沒有 provider 提供的公司行動事件；不從價格缺口自行推測。</div>`;
+      const findingMarkup = findings.length ? findings.map(item => escapeHtml(item)).join("、") : "無明顯異常";
+      const observed = lineage.observedAt ? formatEvidenceDate(lineage.observedAt) : "未知";
+      document.getElementById("dataLineagePanel").innerHTML = `
+        <strong>資料品質／血緣</strong>
+        <div class="lineage-grid">
+          <div class="lineage-item"><span>行情來源</span><strong>${escapeHtml(lineage.source || s.source || "unknown")}</strong></div>
+          <div class="lineage-item"><span>調整方式</span><strong>${escapeHtml(lineage.adjustmentStatus || "UNVERIFIED")}</strong></div>
+          <div class="lineage-item"><span>完整性</span><strong>${escapeHtml(lineage.integrityStatus || "UNKNOWN")}</strong></div>
+          <div class="lineage-item"><span>價格點數</span><strong>${escapeHtml(String(lineage.pricePointCount ?? (s.prices || []).length))}</strong></div>
+          <div class="lineage-item"><span>資料區間</span><strong>${escapeHtml(lineage.dataFrom || "?")} ～ ${escapeHtml(lineage.dataTo || "?")}</strong></div>
+          <div class="lineage-item"><span>來源觀測</span><strong>${escapeHtml(observed)}</strong></div>
+        </div>
+        <div class="footer-note">檢查結果：${findingMarkup}</div>
+        <div class="lineage-actions"><strong>公司行動</strong>${actionMarkup}</div>
+      `;
     }
 
     function pulseInterface() {
@@ -2468,16 +3214,110 @@
       });
     }
 
+    function newsSentimentLabel(value) {
+      return {
+        BULLISH: "偏多",
+        BEARISH: "偏空",
+        NEUTRAL: "中性",
+        INSUFFICIENT_DATA: "資料不足"
+      }[String(value || "").toUpperCase()] || "未分類";
+    }
+
+    function newsSentimentTone(value) {
+      const normalized = String(value || "").toUpperCase();
+      return normalized === "BULLISH" ? "up" : normalized === "BEARISH" ? "down" : "warn";
+    }
+
+    function newsSignalText(score) {
+      if (!score) return "--";
+      if (String(score.overallLabel || "").toUpperCase() === "INSUFFICIENT_DATA") return "資料不足";
+      const numeric = Number(score.overallScore);
+      if (!Number.isFinite(numeric)) return "資料不足";
+      return `${numeric >= 0 ? "+" : ""}${numeric} · ${newsSentimentLabel(score.overallLabel)}`;
+    }
+
+    function newsSignalNote(score) {
+      if (!score) {
+        return state.settings.mode === "real"
+          ? "消息面尚未評估；請先在總覽執行新聞評分。消息面訊號不會取代技術模型或 AI 分析。"
+          : "目前為 mock 模式，尚未產生消息面評分。切換真實 API 並匯入新聞後，可在總覽執行評估。";
+      }
+      if (String(score.overallLabel || "").toUpperCase() === "INSUFFICIENT_DATA") {
+        return `消息面資料不足（${score.articleCount || 0} 篇可評估新聞）；本次結論不納入新聞訊號。`;
+      }
+      const latest = score.latestPublishedAt ? `，最新發布 ${formatEvidenceDate(score.latestPublishedAt)}` : "";
+      return `消息面來自 ${score.articleCount || 0} 篇可追溯新聞${latest}；這是新聞訊號，不是價格預測。`;
+    }
+
+    function renderNewsScore(stock) {
+      const status = document.getElementById("newsScoreStatus");
+      const meta = document.getElementById("newsScoreMeta");
+      const overall = document.getElementById("newsScoreOverall");
+      const confidence = document.getElementById("newsScoreConfidence");
+      const count = document.getElementById("newsScoreCount");
+      const articles = document.getElementById("newsScoreArticles");
+      const score = state.newsScore;
+      overall.textContent = score ? `${score.overallScore >= 0 ? "+" : ""}${score.overallScore} · ${newsSentimentLabel(score.overallLabel)}` : "--";
+      confidence.textContent = score ? `${score.confidence}%` : "--";
+      count.textContent = score ? String(score.articleCount) : "--";
+      if (state.newsScoreError) {
+        status.textContent = state.newsScoreError;
+        status.className = "footer-note failed";
+        meta.textContent = "評估需要目前帳號可見的 NEWS 文件。";
+      } else if (!score) {
+        status.textContent = state.settings.mode === "real"
+          ? "尚未執行新聞評估；請先登入並抓取或匯入新聞。"
+          : "目前為 mock 模式；切換真實 API 後才能評估已匯入新聞。";
+        status.className = "footer-note";
+        meta.textContent = "評估目前帳號已匯入、且可追溯來源的新聞。";
+      } else if (score.overallLabel === "INSUFFICIENT_DATA") {
+        status.innerHTML = statusPill("沒有可評估的已匯入新聞", "warn");
+        meta.textContent = `評分來源 ${score.source || "no-indexed-news"}`;
+      } else {
+        status.innerHTML = statusPill(
+          `整體 ${newsSentimentLabel(score.overallLabel)} · 多 ${score.bullishCount} / 空 ${score.bearishCount} / 中 ${score.neutralCount}`,
+          newsSentimentTone(score.overallLabel)
+        );
+        meta.innerHTML = `最新發布 ${formatEvidenceDate(score.latestPublishedAt)} · ${escapeHtml(score.source || "news-score")}`;
+      }
+      if (!score?.articles?.length) {
+        articles.innerHTML = `<div class="evidence-empty">${state.newsScoreError || "評分會列出每篇新聞的來源、相關度、命中詞與理由。"}</div>`;
+        return;
+      }
+      articles.innerHTML = score.articles.map(article => `
+        <div class="evidence-item">
+          <strong>${escapeHtml(article.title || "未命名新聞")}</strong>
+          <div class="evidence-meta">${escapeHtml(article.source || "未知來源")} · ${formatEvidenceDate(article.publishedAt)} · 相關度 ${formatEvidenceScore(article.relevanceScore)} · id ${escapeHtml(article.chunkId || "未知")}</div>
+          <div class="evidence-tags">
+            <span class="evidence-tag ${newsSentimentTone(article.sentiment)}">${newsSentimentLabel(article.sentiment)} ${article.sentimentScore >= 0 ? "+" : ""}${article.sentimentScore}</span>
+            <span class="evidence-tag">影響度 ${article.impactScore}</span>
+            <span class="evidence-tag">信心 ${article.confidence}%</span>
+          </div>
+          <div>${escapeHtml(article.rationale || "無評估理由")}</div>
+          <div class="muted" style="margin-top:6px">${escapeHtml(article.snippet || "無摘要")}</div>
+        </div>
+      `).join("");
+    }
+
     function render() {
       const s = selectedStock();
       const results = modelResults(s);
-      const okResults = results.filter(r => !r.failed);
-      const consensus = okResults.reduce((sum, r) => sum + r.score, 0) / okResults.length;
+      const okResults = results.filter(r => !r.failed && r.score != null && r.bullish != null
+        && Number.isFinite(Number(r.score)) && Number.isFinite(Number(r.bullish)));
+      const consensus = okResults.length
+        ? okResults.reduce((sum, r) => sum + Number(r.score), 0) / okResults.length
+        : null;
       const active = results.find(r => r.provider === state.provider) || results[0];
       const realAnalysis = state.settings.mode === "real" ? state.realAi?.analysis : null;
-      const analysisSource = realAnalysis?.source || active.source || "mock-ai";
+      const analysisValues = analysisViewValues(realAnalysis, active, s.prediction);
+      const analysisSource = analysisValues.source;
       const evidence = state.settings.mode === "real" ? (realAnalysis?.evidence || state.realEvidence || []) : [];
       const metrics = stockMetrics(s);
+      const technicalQuality = s.tech?.dataQuality || {};
+      const predictionQuality = s.prediction?.dataQuality || {};
+      const upProbabilityAvailable = predictionMetricAvailable(s, "UP_PROBABILITY");
+      const volatilityAvailable = predictionMetricAvailable(s, "VOLATILITY");
+      const riskAvailable = predictionMetricAvailable(s, "RISK_LEVEL");
       document.getElementById("title").textContent = `${s.name} · ${s.symbol}`;
       document.getElementById("subtitle").textContent = `${marketLabel(s.market)} · ${s.currency} · ${s.timezone}`;
       document.getElementById("dataTime").textContent = `資料時間 ${new Date(s.updatedAt || Date.now()).toLocaleString("zh-TW")} · ${s.source || "mock"}`;
@@ -2486,11 +3326,18 @@
       document.getElementById("price").textContent = money(s);
       document.getElementById("change").className = priceClass(s);
       document.getElementById("change").textContent = `${s.changePct >= 0 ? "+" : ""}${s.changePct.toFixed(2)}%`;
-      document.getElementById("consensus").textContent = consensus.toFixed(1);
-      document.getElementById("consensusText").textContent = `平均偏多機率 ${Math.round(okResults.reduce((a, r) => a + r.bullish, 0) / okResults.length)}%`;
-      document.getElementById("upProb").textContent = `${Math.round(s.prediction.upProbability * 100)}%`;
-      document.getElementById("risk").textContent = riskLabel(s.prediction.risk);
-      document.getElementById("riskText").textContent = `波動率 ${(s.prediction.volatility * 100).toFixed(1)}%`;
+      document.getElementById("consensus").textContent = consensus == null ? "--" : consensus.toFixed(1);
+      document.getElementById("consensusText").textContent = okResults.length
+        ? `平均偏多機率 ${Math.round(okResults.reduce((sum, r) => sum + Number(r.bullish), 0) / okResults.length)}%`
+        : "所有模型都沒有可用結果，未計算共識";
+      document.getElementById("upProb").textContent = upProbabilityAvailable && Number.isFinite(Number(s.prediction.upProbability))
+        ? `${Math.round(s.prediction.upProbability * 100)}%`
+        : "--";
+      document.getElementById("upProbText").textContent = `${s.prediction?.modelVersion || "model"} · ${s.prediction?.horizonDays || 5} 日`;
+      document.getElementById("risk").textContent = riskAvailable ? riskLabel(s.prediction.risk) : "資料不足";
+      document.getElementById("riskText").textContent = volatilityAvailable && Number.isFinite(Number(s.prediction.volatility))
+        ? `波動率 ${(s.prediction.volatility * 100).toFixed(1)}%`
+        : "樣本不足，無法估算";
       document.getElementById("summaryTable").innerHTML = rows({
         "股票代碼": s.symbol,
         "市場": marketLabel(s.market),
@@ -2505,17 +3352,68 @@
         "RSI14": `${num(metrics.rsi14)} · ${rsiHint(metrics.rsi14)}`,
         "ATR14": `${num(metrics.atr14)} · 約價格 ${pct(metrics.atrPct)}`,
         "資料來源": s.source || "mock",
+        "行情資料品質": qualityStatusLabel(technicalQuality.status),
+        "行情樣本數": Number.isFinite(Number(technicalQuality.sampleCount)) ? `${technicalQuality.sampleCount} 筆` : "--",
+        "預測資料品質": qualityStatusLabel(predictionQuality.status),
         "預期報酬": pct(metrics.expectedReturn),
         "模型版本": s.prediction?.modelVersion || "heuristic-momentum-v1"
       });
-      document.getElementById("techTable").innerHTML = rows({ MA5: num(s.tech.MA5), MA20: num(s.tech.MA20), MA60: num(s.tech.MA60), RSI14: s.tech.RSI14.toFixed(1), MACD: trendLabel(s.tech.MACD), ATR14: num(s.tech.ATR14) });
+      document.getElementById("marketDataQuality").textContent = `${qualityText(technicalQuality, "技術資料")}；${qualityText(predictionQuality, "預測資料")}`;
+      renderNewsScore(s);
+      document.getElementById("techTable").innerHTML = rows({
+        MA5: technicalMetric(s, "MA5"),
+        MA20: technicalMetric(s, "MA20"),
+        MA60: technicalMetric(s, "MA60"),
+        RSI14: technicalMetric(s, "RSI14", value => Number.isFinite(Number(value)) ? Number(value).toFixed(1) : "--"),
+        MACD: technicalMetric(s, "MACD", trendLabel),
+        ATR14: technicalMetric(s, "ATR14")
+      });
+      document.getElementById("technicalDataQuality").textContent = qualityText(technicalQuality, "資料品質");
       document.getElementById("providerLabel").textContent = `${state.provider} / ${analysisSource}`;
-      document.getElementById("trend").textContent = active.failed ? "讀取失敗" : realAnalysis?.trend || active.trend;
-      document.getElementById("aiScore").textContent = active.failed ? "--" : realAnalysis?.aiScore ?? active.score;
-      document.getElementById("analysisProb").textContent = `${Math.round(s.prediction.upProbability * 100)}%`;
-      document.getElementById("bullish").innerHTML = list(realAnalysis?.bullishReasons || ["短期均線維持支撐", "成交量未明顯失速", "模型預測仍偏正向"]);
-      document.getElementById("bearish").innerHTML = list(realAnalysis?.bearishRisks || ["追價風險上升", "大盤回檔會放大波動", "需確認資料時間與財報事件"]);
-      document.getElementById("conclusion").textContent = `${active.failed ? active.error : realAnalysis?.conclusion || active.summary} 目前風險等級 ${riskLabel(s.prediction.risk)}，這不是投資建議，需搭配停損與資金控管。`;
+      document.getElementById("analysisNewsSignal").textContent = newsSignalText(state.newsScore);
+      document.getElementById("analysisNewsNote").textContent = newsSignalNote(state.newsScore);
+      const analysisUnavailable = !realAnalysis && active?.failed;
+      document.getElementById("trend").textContent = analysisUnavailable ? "讀取失敗" : analysisValues.trend;
+      document.getElementById("aiScore").textContent = analysisUnavailable || analysisValues.score == null ? "--" : analysisValues.score;
+      document.getElementById("analysisProb").textContent = analysisUnavailable || analysisValues.probability == null
+        ? "--"
+        : `${Math.round(analysisValues.probability * 100)}%`;
+      document.getElementById("bullish").innerHTML = list(analysisUnavailable
+        ? ["真實 AI 分析尚未取得，未使用前端模擬偏多理由。"]
+        : realAnalysis?.bullishReasons || [
+          qualityUnavailable(technicalQuality, "MA20") ? "MA20 樣本不足，暫不判定中期支撐" : "短期均線維持支撐",
+          "成交量未明顯失速",
+          "模型預測仍偏正向"
+        ]);
+      document.getElementById("bearish").innerHTML = list(analysisUnavailable
+        ? ["真實 AI 分析尚未取得，未使用 AI 風險結論。"]
+        : realAnalysis?.bearishRisks || ["追價風險上升", "大盤回檔會放大波動", "需確認資料時間與財報事件"]);
+      const defaultWatchPoints = [
+        qualityUnavailable(technicalQuality, "MACD")
+          ? "MACD 樣本不足，補齊資料後再解讀訊號"
+          : `MACD 訊號：${trendLabel(s.tech.MACD)}`,
+        qualityUnavailable(technicalQuality, "MA20")
+          ? "MA20 樣本不足，暫不設定支撐失守條件"
+          : `關注 MA20 ${num(s.tech.MA20)} 是否失守`,
+        state.newsScore
+          ? newsSignalNote(state.newsScore)
+          : "新聞評分尚未執行，確認消息面資料日期後再更新判讀"
+      ];
+      const watchPoints = Array.isArray(realAnalysis?.watchPoints) && realAnalysis.watchPoints.length
+        ? realAnalysis.watchPoints
+        : defaultWatchPoints;
+      document.getElementById("watchPoints").innerHTML = list(watchPoints);
+      const analysisConclusion = analysisUnavailable
+        ? active?.error || "個股分析讀取失敗。"
+        : realAnalysis?.conclusion || active?.summary || "目前沒有可用的個股分析結果。";
+      const qualityCaveat = technicalQuality.status && technicalQuality.status !== "OK"
+        ? ` 技術資料目前為${qualityStatusLabel(technicalQuality.status)}，請勿把缺少 ${technicalQuality.unavailableIndicators?.join("、") || "完整樣本"} 的數值視為完整指標。`
+        : "";
+      const technicalRisk = riskAvailable ? riskLabel(s.prediction.risk) : "資料不足";
+      const newsCaveat = state.newsScore && String(state.newsScore.overallLabel || "").toUpperCase() !== "INSUFFICIENT_DATA"
+        ? ` 消息面訊號 ${newsSignalText(state.newsScore)}。`
+        : "";
+      document.getElementById("conclusion").textContent = `${analysisConclusion} AI 風險等級 ${riskLabel(analysisUnavailable ? "UNKNOWN" : analysisValues.risk)}；技術模型風險等級 ${technicalRisk}。${newsCaveat}${qualityCaveat}這不是投資建議，需搭配停損與資金控管。`;
       document.getElementById("analysisEvidence").innerHTML = renderEvidence(evidence, {
         empty: state.settings.mode === "real"
           ? "目前沒有可顯示的文件證據。可先到設定匯入新聞、公告或法說會內容。"
@@ -2524,9 +3422,19 @@
       document.getElementById("compareRows").innerHTML = results.map(r => r.failed
         ? `<tr><td class="failed">${r.provider}</td><td colspan="4" class="failed">${r.error}</td></tr>`
         : `<tr><td>${r.provider}</td><td>${r.trend}</td><td>${r.score}</td><td>${r.bullish}%</td><td>${riskLabel(r.risk)}</td></tr>`).join("");
+      document.getElementById("comparisonDataQuality").textContent = [
+        qualityText(technicalQuality, "技術資料"),
+        qualityText(predictionQuality, "預測資料"),
+        state.settings.mode === "real"
+          ? "各模型共用同一檔股票的上述資料與檢索上下文"
+          : "目前為 mock 模型比較，未呼叫即時 provider"
+      ].join("；");
       document.getElementById("divergence").textContent = divergence(okResults);
-      document.getElementById("divergenceReason").textContent = state.failedProviders.length
-        ? "部分模型失敗，已排除後重新計算共識與分歧。"
+      const failedModelCount = results.filter(result => result.failed).length;
+      document.getElementById("divergenceReason").textContent = failedModelCount === results.length
+        ? "所有模型都失敗，未計算共識與分歧。"
+        : failedModelCount
+          ? "部分模型失敗，已排除後重新計算共識與分歧。"
         : evidence.length
           ? `本次模型比較共用 ${evidence.length} 筆檢索證據，因此差異主要來自模型判讀，不是檢索來源。`
           : "多數模型方向接近，但風險評估仍有差異；共識分數會忽略失敗模型。";
@@ -2540,11 +3448,15 @@
       renderWatch();
       renderSettings();
       drawChart(s);
-      document.getElementById("chatAnswer").textContent = `目前 ${s.symbol} 的 5 日 ${analysisSource} 上漲機率為 ${Math.round(s.prediction.upProbability * 100)}%，主要要看 MA20 是否失守與波動是否擴大。`;
-      document.getElementById("chatEvidence").innerHTML = renderEvidence(evidence, {
+      const chatAnswer = state.chatAnswer || `可直接輸入任何與 ${s.symbol} 有關的股票研究問題，AI 會依目前資料與檢索證據回答。`;
+      const chatEvidence = state.chatAnswer ? (state.chatEvidence || []) : evidence;
+      document.getElementById("chatAnswer").textContent = chatAnswer;
+      document.getElementById("chatPlan").innerHTML = renderChatPlan(state.chatIntent, state.chatStatus, state.chatSource);
+      document.getElementById("chatTools").innerHTML = renderChatTools(state.chatTools);
+      document.getElementById("chatEvidence").innerHTML = renderEvidence(chatEvidence, {
         empty: state.settings.mode === "real"
           ? "目前沒有 AI 問答可引用的文件證據。可先匯入新聞或公告後再提問。"
-          : "目前為模擬資料模式，切到真實 API 後才會顯示 AI 問答參考證據。"
+          : "目前為模擬資料模式；切到真實 API 後可取得 AI 問答參考證據。"
       });
       pulseInterface();
       bindInteractiveCards();
@@ -2748,7 +3660,35 @@
     function setChatBusy(busy) {
       document.querySelectorAll("[data-question]").forEach(button => button.disabled = busy);
       document.getElementById("chatInput").disabled = busy;
+      const sendButton = document.getElementById("sendChat");
+      if (sendButton) sendButton.disabled = busy;
       if (busy) document.getElementById("chatAnswer").textContent = "AI 回覆產生中...";
+    }
+
+    function resetChatHistory() {
+      state.chatHistory = [];
+      state.chatAnswer = "";
+      state.chatEvidence = [];
+      state.chatSource = "";
+      state.chatIntent = "";
+      state.chatStatus = "";
+      state.chatTools = [];
+    }
+
+    function rememberChatExchange(question, answer) {
+      const turns = [...(state.chatHistory || [])];
+      if (question && question.trim()) turns.push({ role: "user", content: question.trim().slice(0, 2000) });
+      if (answer && answer.trim()) turns.push({ role: "assistant", content: answer.trim().slice(0, 2000) });
+      let total = 0;
+      const retained = [];
+      for (let index = turns.length - 1; index >= 0 && retained.length < 8; index -= 1) {
+        const turn = turns[index];
+        if (!turn || !turn.content) continue;
+        if (total + turn.content.length > 8000) break;
+        retained.unshift(turn);
+        total += turn.content.length;
+      }
+      state.chatHistory = retained;
     }
     function divergence(results) {
       if (results.length < 2) return "UNKNOWN";
@@ -2764,54 +3704,233 @@
       }
       return items.map(item => `
         <div class="evidence-item">
-          <strong>${item.title}</strong>
-          <div class="evidence-meta">${item.source} · ${new Date(item.publishedAt).toLocaleDateString("zh-TW")} · score ${Number(item.score).toFixed(2)}</div>
+          <strong>${escapeHtml(item.title || "未命名文件")}</strong>
+          <div class="evidence-meta">${escapeHtml(item.source || "未知來源")} · ${formatEvidenceDate(item.publishedAt)} · score ${formatEvidenceScore(item.score)} · id ${escapeHtml(item.chunkId || "未知")}</div>
           <div class="evidence-tags">
-            <span class="evidence-tag">${item.docType}</span>
-            <span class="evidence-tag">${item.symbol}</span>
-            <span class="evidence-tag">${item.market}</span>
+            <span class="evidence-tag">${escapeHtml(item.docType || "未知類型")}</span>
+            <span class="evidence-tag">${escapeHtml(item.symbol || "未知標的")}</span>
+            <span class="evidence-tag">${escapeHtml(item.market || "未知市場")}</span>
           </div>
-          <div>${item.snippet}</div>
+          <div>${escapeHtml(item.snippet || "無摘要")}</div>
         </div>
       `).join("");
     }
 
+    function formatEvidenceDate(value) {
+      const date = value ? new Date(value) : null;
+      return date && !Number.isNaN(date.getTime())
+        ? escapeHtml(date.toLocaleDateString("zh-TW"))
+        : "日期未知";
+    }
+
+    function formatEvidenceScore(value) {
+      const score = Number(value);
+      return Number.isFinite(score) ? score.toFixed(2) : "--";
+    }
+
+    function renderChatPlan(intent = "", status = "", source = "") {
+      if (!intent && !status && !source) return "尚未執行後端工具路由。";
+      const labels = {
+        READY: "可回答",
+        PARTIAL: "部分資料可用",
+        INSUFFICIENT_DATA: "資料不足",
+        OUT_OF_SCOPE: "超出股票研究範圍",
+        MOCK: "模擬資料"
+      };
+      return `<strong>問答意圖：</strong>${escapeHtml(intent || "UNKNOWN")} · <strong>狀態：</strong>${escapeHtml(labels[status] || status || "UNKNOWN")} · <strong>來源：</strong>${escapeHtml(source || "unknown")}`;
+    }
+
+    function renderChatTools(tools = []) {
+      if (!Array.isArray(tools) || !tools.length) return `<div class="evidence-empty">本次沒有可顯示的工具結果。</div>`;
+      const labels = { READY: "可用", PARTIAL: "部分可用", INSUFFICIENT_DATA: "資料不足", NEEDS_PARAMETERS: "需要條件", OUT_OF_SCOPE: "未執行" };
+      return tools.map(tool => {
+        const citations = Array.isArray(tool.citationIds) && tool.citationIds.length
+          ? `<div class="evidence-meta">引用：${escapeHtml(tool.citationIds.join(", "))}</div>`
+          : "";
+        const observed = tool.observedAt ? ` · ${formatEvidenceDate(tool.observedAt)}` : "";
+        return `<div class="evidence-item"><strong>${escapeHtml(tool.name || "unknown")}</strong><div class="evidence-meta">${escapeHtml(labels[tool.status] || tool.status || "UNKNOWN")} · ${escapeHtml(tool.source || "unknown")}${observed}</div><div>${escapeHtml(tool.summary || "無工具摘要")}</div>${citations}</div>`;
+      }).join("");
+    }
+
+    function setChatResult(answer, evidence = [], source = "", plan = {}) {
+      state.chatAnswer = answer || "";
+      state.chatEvidence = Array.isArray(evidence) ? evidence : [];
+      state.chatSource = source || "";
+      state.chatIntent = plan.intent || "";
+      state.chatStatus = plan.answerStatus || "";
+      state.chatTools = Array.isArray(plan.tools) ? plan.tools : [];
+      document.getElementById("chatAnswer").textContent = state.chatAnswer;
+      document.getElementById("chatPlan").innerHTML = renderChatPlan(state.chatIntent, state.chatStatus, state.chatSource);
+      document.getElementById("chatTools").innerHTML = renderChatTools(state.chatTools);
+      document.getElementById("chatEvidence").innerHTML = renderEvidence(state.chatEvidence, {
+        empty: state.settings.mode === "real"
+          ? "目前沒有 AI 問答可引用的文件證據。可先匯入新聞或公告後再提問。"
+          : "目前為模擬資料模式；切到真實 API 後可取得 AI 問答參考證據。"
+      });
+    }
+
+    function buildMockChatAnswer(message, stock) {
+      const question = String(message || "").trim();
+      const technical = stock.tech || {};
+      const prediction = stock.prediction || {};
+      const technicalQuality = technical.dataQuality || {};
+      const predictionQuality = prediction.dataQuality || {};
+      const price = Number.isFinite(Number(stock.price)) ? num(stock.price) : "資料不足";
+      const changePct = Number.isFinite(Number(stock.changePct))
+        ? `${Number(stock.changePct) >= 0 ? "+" : ""}${Number(stock.changePct).toFixed(2)}%`
+        : "資料不足";
+      const ma20 = qualityUnavailable(technicalQuality, "MA20") || !Number.isFinite(Number(technical.MA20))
+        ? "資料不足"
+        : num(technical.MA20);
+      const rsi14 = qualityUnavailable(technicalQuality, "RSI14") || !Number.isFinite(Number(technical.RSI14))
+        ? "資料不足"
+        : Number(technical.RSI14).toFixed(1);
+      const upProbability = predictionMetricAvailable(stock, "UP_PROBABILITY") && Number.isFinite(Number(prediction.upProbability))
+        ? `${Math.round(Number(prediction.upProbability) * 100)}%`
+        : "資料不足";
+      const risk = predictionMetricAvailable(stock, "RISK_LEVEL") && prediction.risk
+        ? riskLabel(prediction.risk)
+        : "資料不足";
+      return `[mock-ai] 已收到你的問題：「${question}」。目前問答不限制快捷問題；可用資料顯示 ${stock.symbol} 最新價 ${price}、漲跌 ${changePct}、MA20 ${ma20}、RSI14 ${rsi14}、${upProbability} 上漲機率、${risk} 風險。${qualityText(technicalQuality, "技術資料")}；${qualityText(predictionQuality, "預測資料")}。這是離線模擬回覆，未呼叫即時模型或外部資料；要取得針對這個問題的生成式分析，請切換真實 API 並完成登入與 provider 設定。`;
+    }
+
     async function askChat(message) {
       if (document.getElementById("chatInput").disabled) return;
+      const normalizedMessage = String(message || "").trim();
+      if (!normalizedMessage) {
+        setChatResult("請先輸入問題，再按送出。", [], "validation");
+        document.getElementById("chatInput").focus();
+        return;
+      }
+      const question = normalizedMessage.slice(0, 2000);
       const s = selectedStock();
-      document.getElementById("chatInput").value = message;
+      document.getElementById("chatInput").value = question;
       setChatBusy(true);
+      const history = (state.chatHistory || []).slice(-8);
       try {
-        if (state.settings.mode === "real" && state.realStock) {
-          const data = await apiPost("/ai/chat", { market: state.market, symbol: state.symbol, provider: state.provider, message });
-          const evidence = data.evidence || await loadRealEvidence(state.symbol, `${state.symbol} ${message}`);
+        if (state.settings.mode === "real") {
+          const data = await apiPost("/ai/chat", { market: state.market, symbol: state.symbol, provider: state.provider, message: question, history });
+          const evidence = Array.isArray(data.evidence)
+            ? data.evidence
+            : await loadRealEvidence(state.symbol, `${state.symbol} ${question}`);
           state.realEvidence = evidence;
           const source = data.source || "openai-responses";
-          document.getElementById("chatAnswer").textContent = `[${source}] ${data.message || data.answer || ""}`;
-          document.getElementById("chatEvidence").innerHTML = renderEvidence(evidence);
+          const answer = data.message || data.answer || "";
+          const citationIds = Array.isArray(data.citationIds) ? data.citationIds : [];
+          const citationNotice = citationIds.length
+            ? `\n可驗證引用：${citationIds.join(", ")}`
+            : (evidence.length ? "\n本次回答沒有產生可驗證的文件引用。" : "");
+          setChatResult(`[${source}] ${answer}${citationNotice}`, evidence, source, {
+            intent: data.intent,
+            answerStatus: data.answerStatus,
+            tools: data.tools
+          });
+          rememberChatExchange(question, answer);
           return;
         }
-        document.getElementById("chatAnswer").textContent = `[mock-ai] 根據目前模擬資料：${message} 重點是價格是否守住 MA20、模型分歧是否擴大，以及是否有重大新聞或財報事件。`;
-        document.getElementById("chatEvidence").innerHTML = renderEvidence([]);
+        const mockAnswer = buildMockChatAnswer(question, s);
+        setChatResult(mockAnswer, [], "mock-ai", { intent: "LOCAL_MOCK", answerStatus: "MOCK", tools: [] });
+        rememberChatExchange(question, mockAnswer);
       } catch (error) {
-          state.settings.lastDataLoad = `AI 問答失敗：${error.message}`;
-          saveSettings();
-          renderSettings();
-          document.getElementById("chatAnswer").textContent = `[mock-ai] 根據目前模擬資料：${message} 重點是價格是否守住 MA20、模型分歧是否擴大，以及是否有重大新聞或財報事件。`;
-          document.getElementById("chatEvidence").innerHTML = renderEvidence(state.realEvidence || []);
+        state.settings.lastDataLoad = `AI 問答失敗：${error.message}`;
+        saveSettings();
+        renderSettings();
+        const mockAnswer = `${buildMockChatAnswer(question, s)}\n（真實 API 呼叫失敗：${error.message}）`;
+        setChatResult(mockAnswer, state.realEvidence || [], "mock-ai:frontend-fallback", { intent: "ERROR_FALLBACK", answerStatus: "PARTIAL", tools: [] });
+        rememberChatExchange(question, mockAnswer);
       } finally {
         setChatBusy(false);
       }
     }
 
+    function renderBacktestConditions(details = {}) {
+      const minScore = finiteNumber(details.minAiScore, finiteNumber(document.getElementById("minScore")?.value, 70));
+      const minProb = finiteNumber(details.minUpProbability, finiteNumber(document.getElementById("minProb")?.value, 0.60));
+      const maxRisk = ["LOW", "MEDIUM", "HIGH"].includes(String(details.maxRiskLevel || "").toUpperCase())
+        ? String(details.maxRiskLevel).toUpperCase()
+        : (document.getElementById("maxRisk")?.value || "MEDIUM");
+      const horizonDays = Math.max(1, Math.round(finiteNumber(details.horizonDays, finiteNumber(document.getElementById("holdingDays")?.value, 5))));
+      const commissionRate = Math.max(0, finiteNumber(details.commissionRate, finiteNumber(document.getElementById("commissionRate")?.value, 0)));
+      const taxRate = Math.max(0, finiteNumber(details.taxRate, finiteNumber(document.getElementById("taxRate")?.value, 0)));
+      const slippageRate = Math.max(0, finiteNumber(details.slippageRate, finiteNumber(document.getElementById("slippageRate")?.value, 0)));
+      const takeProfitRate = Math.max(0, finiteNumber(details.takeProfitRate, finiteNumber(document.getElementById("takeProfitRate")?.value, 0)));
+      const stopLossRate = Math.max(0, finiteNumber(details.stopLossRate, finiteNumber(document.getElementById("stopLossRate")?.value, 0)));
+      const signalModel = details.signalModel || "technical-momentum-replay-v1";
+      const entryRule = details.entryRule || `技術訊號分數（代理） >= ${minScore} 且上漲機率 >= ${Math.round(minProb * 100)}% 且風險 <= ${riskLabel(maxRisk)}`;
+      const exitRule = details.exitRule || `最多持有 ${horizonDays} 個交易日；停利 ${takeProfitRate > 0 ? pct(takeProfitRate) : "停用"}、停損 ${stopLossRate > 0 ? pct(-stopLossRate) : "停用"}；沒有反向訊號出場。`;
+      const positionSizing = details.positionSizing || "單一標的、單次訊號名義部位；交易完成後以複利計算，不做資金再平衡。";
+      const costModel = details.costModel || `買賣單邊滑價 ${pct(slippageRate)}；單邊手續費 ${pct(commissionRate)}；賣出證交稅 ${pct(taxRate)}；未估計流動性衝擊。`;
+      const dataScope = details.dataScope || `有日期的收盤價逐根回放；訊號模型 ${signalModel} 只使用當下以前資料，不使用未來資料或現在日期 AI。`;
+      document.getElementById("backtestConditions").innerHTML = `
+        <strong>策略條件詳細（條件皆須同時成立）</strong>
+        <ul>
+          <li>訊號模型：${escapeHtml(signalModel)}</li>
+          <li>進場：${escapeHtml(entryRule)}</li>
+          <li>持有／出場：${escapeHtml(exitRule)}</li>
+          <li>部位：${escapeHtml(positionSizing)}</li>
+          <li>成本：${escapeHtml(costModel)}</li>
+          <li>資料範圍：${escapeHtml(dataScope)}</li>
+        </ul>`;
+    }
+
+    function backtestStatusLabel(value) {
+      return {
+        COMPLETED: "完成",
+        NO_SIGNALS: "沒有符合訊號",
+        INSUFFICIENT_DATA: "資料不足",
+        MOCK_FALLBACK: "模擬回落"
+      }[String(value || "").toUpperCase()] || String(value || "未知");
+    }
+
+    function renderBacktestTrades(trades, status) {
+      const target = document.getElementById("backtestTrades");
+      if (!Array.isArray(trades) || !trades.length) {
+        const message = String(status || "").toUpperCase() === "INSUFFICIENT_DATA"
+          ? "沒有完成交易：歷史收盤價不足以支援目前的回看與持有天數。"
+          : String(status || "").toUpperCase() === "NO_SIGNALS"
+            ? "沒有完成交易：資料期間內沒有同時符合進場門檻的訊號。"
+            : "尚未取得逐筆歷史交易。";
+        target.innerHTML = `<div class="evidence-empty">${escapeHtml(message)}</div>`;
+        return;
+      }
+      target.innerHTML = `
+        <div style="overflow:auto">
+          <table>
+            <thead><tr><th>進場日</th><th>出場日</th><th>進場價</th><th>出場價</th><th>毛報酬</th><th>成本</th><th>淨報酬</th><th>結果</th><th>原因</th></tr></thead>
+            <tbody>${trades.map(trade => `
+              <tr>
+                <td>${escapeHtml(trade.entryDate || "--")}</td>
+                <td>${escapeHtml(trade.exitDate || "--")}</td>
+                <td>${num(trade.entryPrice)}</td>
+                <td>${num(trade.exitPrice)}</td>
+                <td>${pct(trade.grossReturn)}</td>
+                <td>${pct(trade.costRate)}</td>
+                <td class="${Number(trade.netReturn) >= 0 ? "positive" : "negative"}">${pct(trade.netReturn)}</td>
+                <td>${trade.win ? "獲利" : "虧損"}</td>
+                <td>${escapeHtml(trade.exitReason || "--")}</td>
+              </tr>`).join("")}</tbody>
+          </table>
+        </div>`;
+    }
+
     async function runBacktest() {
       const s = selectedStock();
-      const minScore = Number(document.getElementById("minScore").value);
-      const minProb = Number(document.getElementById("minProb").value);
+      const minScore = clampNumber(finiteNumber(document.getElementById("minScore").value, 70), 0, 100);
+      const minProb = clampNumber(finiteNumber(document.getElementById("minProb").value, 0.60), 0, 1);
+      const maxRisk = ["LOW", "MEDIUM", "HIGH"].includes(document.getElementById("maxRisk").value)
+        ? document.getElementById("maxRisk").value
+        : "MEDIUM";
+      const holdingDays = clampNumber(Math.round(finiteNumber(document.getElementById("holdingDays").value, 5)), 1, 60);
+      const commissionRate = clampNumber(finiteNumber(document.getElementById("commissionRate").value, 0), 0, 0.05);
+      const taxRate = clampNumber(finiteNumber(document.getElementById("taxRate").value, 0), 0, 0.05);
+      const slippageRate = clampNumber(finiteNumber(document.getElementById("slippageRate").value, 0), 0, 0.05);
+      const takeProfitRate = clampNumber(finiteNumber(document.getElementById("takeProfitRate").value, 0), 0, 2);
+      const stopLossRate = clampNumber(finiteNumber(document.getElementById("stopLossRate").value, 0), 0, 2);
       const button = document.getElementById("runBacktest");
-      const ruleText = `AI 分數 >= ${minScore} / 機率 >= ${Math.round(minProb * 100)}%`;
+      const ruleText = `訊號分數 >= ${minScore} / 機率 >= ${Math.round(minProb * 100)}% / 風險 <= ${riskLabel(maxRisk)} / 持有 ${holdingDays} 日`;
       let renderedReal = false;
       document.getElementById("backtestRule").textContent = ruleText;
+      renderBacktestConditions({ minAiScore: minScore, minUpProbability: minProb, maxRiskLevel: maxRisk, horizonDays: holdingDays, commissionRate, taxRate, slippageRate, takeProfitRate, stopLossRate });
       document.getElementById("backtestStatus").innerHTML = statusPill("回測執行中", "warn");
       setBusy(button, true, "回測中...");
       try {
@@ -2819,20 +3938,38 @@
           const data = await apiPost("/backtests", {
             market: state.market,
             symbol: state.symbol,
-            strategy: { minAiScore: minScore, minUpProbability: minProb, maxRiskLevel: "MEDIUM" }
+            strategy: {
+              minAiScore: minScore,
+              minUpProbability: minProb,
+              maxRiskLevel: maxRisk,
+              holdingDays,
+              commissionRate,
+              taxRate,
+              slippageRate,
+              takeProfitRate,
+              stopLossRate
+            }
           });
-          document.getElementById("backtestSource").textContent = "真實 API";
-          document.getElementById("backtestState").textContent = "完成";
-          document.getElementById("backtestStatus").innerHTML = statusPill("真實回測完成", "good");
+          const resultStatus = data.status || "COMPLETED";
+          document.getElementById("backtestSource").textContent = data.source || "historical-price-replay-v1";
+          document.getElementById("backtestState").textContent = backtestStatusLabel(resultStatus);
+          renderBacktestConditions(data.conditions || { minAiScore: minScore, minUpProbability: minProb, maxRiskLevel: maxRisk, horizonDays: holdingDays, commissionRate, taxRate, slippageRate, takeProfitRate, stopLossRate, signalModel: data.signalModel });
+          document.getElementById("backtestStatus").innerHTML = statusPill(`真實歷史回放：${backtestStatusLabel(resultStatus)}`, resultStatus === "COMPLETED" ? "good" : "warn");
           document.getElementById("backtestRows").innerHTML = rows({
             "股票代碼": data.symbol,
             "總報酬": pct(data.totalReturn),
             "勝率": `${Math.round(data.winRate * 100)}%`,
             "最大回撤": pct(data.maxDrawdown),
             "夏普比率": Number(data.sharpeRatio).toFixed(2),
-            "交易次數": data.tradeCount
+            "完成交易": data.tradeCount,
+            "資料點數": data.dataPointCount ?? "--",
+            "訊號模型": data.signalModel || "--",
+            "行情來源": Array.isArray(data.priceSources) && data.priceSources.length ? data.priceSources.join(", ") : "--"
           });
-          document.getElementById("backtestNote").textContent = "目前顯示真實 API 回測回傳值；仍需自行判讀策略穩定性。";
+          document.getElementById("backtestNote").textContent = data.note
+            ? `${data.note} ${data.signalModel ? `訊號模型：${data.signalModel}。` : ""}結果只使用歷史收盤價，仍不代表未來績效。`
+            : `目前顯示 ${data.source || "API"} 回傳值；只使用歷史收盤價，仍不代表未來績效。`;
+          renderBacktestTrades(data.trades, resultStatus);
           renderedReal = true;
           return;
         }
@@ -2843,20 +3980,37 @@
           document.getElementById("backtestStatus").innerHTML = statusPill("真實回測失敗，已回落模擬結果", "warn");
       } finally {
         if (!renderedReal) {
-          const totalReturn = (modelResults(s)[0].score - minScore) / 100 + (s.prediction.upProbability - minProb);
-          document.getElementById("backtestSource").textContent = "模擬資料";
-          document.getElementById("backtestState").textContent = state.settings.mode === "real" && state.realStock ? "回落結果" : "完成";
+          document.getElementById("backtestSource").textContent = "frontend-mock";
+          document.getElementById("backtestState").textContent = "模擬回落";
           document.getElementById("backtestRows").innerHTML = rows({
             "股票代碼": s.symbol,
-            "總報酬": pct(totalReturn),
-            "勝率": `${Math.round(48 + totalReturn * 60)}%`,
-            "最大回撤": "-9.8%",
-            "夏普比率": (1.05 + totalReturn).toFixed(2),
-            "交易次數": 42
+            "總報酬": "--（未執行歷史回放）",
+            "勝率": "--（未執行歷史回放）",
+            "最大回撤": "--（未執行歷史回放）",
+            "夏普比率": "--（未執行歷史回放）",
+            "完成交易": "0",
+            "資料點數": "--",
+            "訊號模型": "frontend-mock（非歷史回放）",
+            "行情來源": s.source || "mock"
           });
+          renderBacktestConditions({
+            minAiScore: minScore,
+            minUpProbability: minProb,
+            maxRiskLevel: maxRisk,
+            horizonDays: holdingDays,
+            commissionRate,
+            taxRate,
+            slippageRate,
+            takeProfitRate,
+            stopLossRate,
+            signalModel: "frontend-mock",
+            positionSizing: "未建立部位，不計算績效。",
+            dataScope: "未取得可驗證的有日期歷史收盤價；本次不執行績效回放。"
+          });
+          renderBacktestTrades([], "MOCK_FALLBACK");
           document.getElementById("backtestNote").textContent = state.settings.mode === "real" && state.realStock
-            ? "真實回測失敗，已改用模擬結果顯示；不代表實際績效。"
-            : "回測使用模擬歷史資料，不代表未來績效。";
+            ? "真實歷史回放失敗，已改用前端 mock 條件顯示；沒有績效數字或逐筆交易，不代表實際績效。"
+            : "目前為前端 mock 條件展示；沒有可驗證的歷史回放、績效數字或逐筆交易。";
           if (!(state.settings.mode === "real" && state.realStock)) {
             document.getElementById("backtestStatus").innerHTML = statusPill("模擬回測", "warn");
           }
@@ -2870,9 +4024,23 @@
       document.getElementById("watchRows").innerHTML = state.watch.map(key => {
         const s = watchStock(key);
         if (!s) return "";
-        const score = Math.round(modelResults(s).reduce((a, r) => a + r.score, 0) / 4);
-        return `<tr><td>${s.symbol}</td><td>${marketLabel(s.market)}</td><td>${money(s)}</td><td class="${priceClass(s)}">${s.changePct >= 0 ? "+" : ""}${s.changePct.toFixed(2)}%</td><td>${score}</td><td>${riskLabel(s.prediction.risk)}</td><td><button data-remove-watch="${key}">移除</button></td></tr>`;
+        const results = modelResults(s);
+        const successfulResults = results.filter(result => !result.failed && result.score != null && Number.isFinite(Number(result.score)));
+        const score = successfulResults.length
+          ? Math.round(successfulResults.reduce((sum, result) => sum + Number(result.score), 0) / successfulResults.length)
+          : "--";
+        const aiSources = [...new Set(results.map(result => result.source || "mock-ai").filter(Boolean))].join(", ") || "--";
+        const technicalQuality = s.tech?.dataQuality || {};
+        const predictionRisk = predictionMetricAvailable(s, "RISK_LEVEL") && s.prediction?.risk
+          ? riskLabel(s.prediction.risk)
+          : "資料不足";
+        const sampleCount = Number.isFinite(Number(technicalQuality.sampleCount)) ? `${Number(technicalQuality.sampleCount)} 筆` : "--";
+        const quality = `${qualityStatusLabel(technicalQuality.status)} · ${sampleCount}`;
+        const change = Number(s.changePct);
+        const changeText = Number.isFinite(change) ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%` : "資料不足";
+        return `<tr><td>${s.symbol}</td><td>${marketLabel(s.market)}</td><td>${money(s)}</td><td class="${priceClass(s)}">${changeText}</td><td>${score}</td><td>${predictionRisk}</td><td>${aiSources}<br><span class="muted">行情 ${s.source || technicalQuality.source || "unknown"}</span></td><td>${quality}</td><td><button data-remove-watch="${key}">移除</button></td></tr>`;
       }).join("");
+      renderWatchAlerts();
     }
 
     function watchStock(key) {
@@ -2898,6 +4066,7 @@
         } catch (error) {
           state.settings.lastDataLoad = `自選股移除失敗：${error.message}`;
         }
+        await loadWatchlistAlerts();
         saveSettings();
         renderSettings();
       }
@@ -2933,6 +4102,9 @@
       const effectiveDeepSeekConfigured = deepSeekConfigured || localDeepSeekConfigured;
       const localMimoConfigured = loggedIn ? (state.settings.hasStoredMimoApiKey || !!state.settings.mimoApiKey) : !!state.settings.mimoApiKey;
       const effectiveMimoConfigured = mimoConfigured || localMimoConfigured;
+      const ragEmbeddingProvider = providers?.ragEmbeddingProvider || null;
+      const ragEmbeddingConfigured = providers?.ragEmbeddingConfigured;
+      const secretsEncryptionConfigured = providers?.secretsEncryptionConfigured;
       const alphaVantageNewsConfigured = providers ? (providers.alphaVantageNewsConfigured || localAlphaVantageConfigured) : localAlphaVantageConfigured;
       const usNewsConfigured = !!alphaVantageNewsConfigured || !!fmpNewsConfigured || !!yahooFinanceNewsConfigured;
       const usNewsSourceLabel = alphaVantageNewsConfigured ? "Alpha 就緒" : fmpNewsConfigured ? "FMP 就緒" : yahooFinanceNewsConfigured ? "Yahoo 就緒" : "缺少";
@@ -2991,6 +4163,10 @@
         "AI 來源": statusPill(aiSource, isMockAiSource(aiSource) ? "warn" : "good"),
         "OpenAI 設定": statusPill(openAiConfigured === null ? "unknown" : openAiConfigured ? "ready" : "missing", openAiConfigured === null ? "" : openAiConfigured ? "good" : "bad"),
         "OpenAI 模型": providers?.openAiModel || "未知",
+        "RAG Embedding": statusPill(ragEmbeddingProvider ? `${ragEmbeddingProvider} ${ragEmbeddingConfigured ? "ready" : "missing"}` : "unknown", ragEmbeddingProvider ? ragEmbeddingConfigured ? "good" : "warn" : ""),
+        "RAG Embedding 模型": providers?.ragEmbeddingModel || "未知",
+        "RAG Embedding 維度": providers?.ragEmbeddingDimension || "未知",
+        "帳號金鑰加密": statusPill(secretsEncryptionConfigured === undefined ? "unknown" : secretsEncryptionConfigured ? "ready" : "missing", secretsEncryptionConfigured === undefined ? "" : secretsEncryptionConfigured ? "good" : "warn"),
         "Gemini 設定": statusPill(geminiConfigured ? "ready" : providers?.geminiConfigured === null || providers?.geminiConfigured === undefined ? "unknown" : "missing", geminiConfigured ? "good" : providers?.geminiConfigured === null || providers?.geminiConfigured === undefined ? "" : "warn"),
         "Gemini 模型": providers?.geminiModel || "未知",
         "DeepSeek 設定": statusPill(effectiveDeepSeekConfigured ? "ready" : deepSeekConfigured === null || deepSeekConfigured === undefined ? "unknown" : "missing", effectiveDeepSeekConfigured ? "good" : deepSeekConfigured === null || deepSeekConfigured === undefined ? "" : "warn"),
@@ -3101,11 +4277,13 @@
     }
 
     function escapeHtml(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+      return String(value ?? "").replace(/[&<>"']/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[character]);
     }
 
     function buildSourceNotice(stockData, analysisSource) {
@@ -3238,18 +4416,33 @@
       const fail = e.target.closest("[data-fail]")?.dataset.fail;
       const clearFail = e.target.closest("[data-clear-fail]")?.dataset.clearFail;
       const removeWatchKey = e.target.closest("[data-remove-watch]")?.dataset.removeWatch;
+      const alertToggleId = e.target.closest("[data-alert-toggle]")?.dataset.alertToggle;
+      const alertToggleEnabled = e.target.closest("[data-alert-toggle]")?.dataset.alertEnabled === "true";
+      const alertDeleteId = e.target.closest("[data-alert-delete]")?.dataset.alertDelete;
+      const alertNotificationId = e.target.closest("[data-alert-notification-id]")?.dataset.alertNotificationId;
+      const alertNotificationRead = e.target.closest("[data-alert-notification-id]")?.dataset.alertNotificationRead === "true";
+      const alertClearRead = e.target.closest("[data-alert-clear-read]")?.dataset.alertClearRead;
+      const alertLocalNotificationEnabled = e.target.closest("[data-alert-local-notification]")?.dataset.alertLocalNotification === "true";
       if (tab) setTab(tab, { focusPanel: e.target.closest(".mobile-dock") !== null });
       if (provider) { state.provider = provider; document.getElementById("provider").value = provider; refreshRealAnalysis(); }
-      if (pick) { const [market, symbol] = pick.split(":"); state.market = market; state.symbol = symbol; document.getElementById("market").value = market; document.getElementById("symbolSearch").value = symbol; refreshSymbols(); render(); }
+      if (pick) { const [market, symbol] = pick.split(":"); state.market = market; state.symbol = symbol; state.newsScore = null; state.newsScoreError = ""; resetChatHistory(); document.getElementById("market").value = market; document.getElementById("symbolSearch").value = symbol; refreshSymbols(); render(); }
       if (question) askChat(question);
       if (fail && !state.failedProviders.includes(fail)) { state.failedProviders.push(fail); render(); }
       if (clearFail) { state.failedProviders = []; render(); }
       if (removeWatchKey) removeWatch(removeWatchKey);
+      if (alertToggleId) toggleWatchAlert(alertToggleId, alertToggleEnabled);
+      if (alertDeleteId) deleteWatchAlert(alertDeleteId);
+      if (alertNotificationId) toggleWatchAlertNotification(alertNotificationId, alertNotificationRead);
+      if (alertClearRead) clearReadWatchAlertNotifications();
+      if (e.target.closest("[data-alert-local-notification]")) toggleWatchAlertLocalNotification(alertLocalNotificationEnabled);
     });
 
     document.getElementById("market").addEventListener("change", e => {
       state.market = e.target.value;
       state.symbol = Object.keys(stocks[state.market])[0];
+      state.newsScore = null;
+      state.newsScoreError = "";
+      resetChatHistory();
       state.realSearch.results = [];
       state.realSearch.query = "";
       document.getElementById("symbolSearch").value = state.symbol;
@@ -3257,9 +4450,14 @@
       render();
     });
     document.getElementById("provider").addEventListener("change", e => { state.provider = e.target.value; refreshRealAnalysis(); });
+    document.getElementById("loadNewsScore").addEventListener("click", loadNewsScore);
+    document.getElementById("createWatchAlert").addEventListener("click", createWatchAlert);
+    document.getElementById("refreshWatchAlerts").addEventListener("click", loadWatchlistAlerts);
+    document.getElementById("alertCondition").addEventListener("change", updateWatchAlertThresholdField);
     document.getElementById("loadStock").addEventListener("click", async () => {
       const loadButton = document.getElementById("loadStock");
       if (loadButton.disabled) return;
+      resetChatHistory();
       setBusy(loadButton, true, "讀取中...");
       const query = document.getElementById("symbolSearch").value;
       let target = null;
@@ -3267,6 +4465,8 @@
       let autoRealLookup = false;
       let loadedMarketForSources = null;
       let loadedSymbolForSources = null;
+      state.newsScore = null;
+      state.newsScoreError = "";
       try {
         const localTarget = resolveSearchTarget(query);
         autoRealLookup = state.settings.mode !== "real" && !localTarget.found && query.trim();
@@ -3291,11 +4491,23 @@
         document.getElementById("symbolSearch").value = state.symbol;
         if (state.settings.mode === "real") {
           state.realStock = await loadRealStock(state.symbol);
-          const realAi = await loadRealAi(state.symbol);
-          state.realAi = realAi;
-          state.realEvidence = realAi.analysis?.evidence || await loadRealEvidence(state.symbol);
-          state.settings.lastDataLoad = `OK ${state.symbol}`;
-          setWatchFeedback(`${autoRealLookup ? "已自動切到真實 API 並載入 " : target.switchedMarket ? `已切換到 ${marketLabel(state.market)} 並載入 ` : "已載入 "}${state.symbol}，可直接加入自選。`);
+          const loadedMessage = `${autoRealLookup ? "已自動切到真實 API 並載入 " : target.switchedMarket ? `已切換到 ${marketLabel(state.market)} 並載入 ` : "已載入 "}${state.symbol}，可直接加入自選。`;
+          try {
+            const realAi = await loadRealAi(state.symbol);
+            state.realAi = realAi;
+            state.realEvidence = realAi.analysis?.evidence || await loadRealEvidence(state.symbol);
+            state.settings.lastDataLoad = `OK ${state.symbol}`;
+            setWatchFeedback(loadedMessage);
+          } catch (error) {
+            // Market data and AI are independent: keep the verified historical
+            // series when the optional AI endpoints are unavailable or
+            // require authentication, instead of replacing it with a
+            // single-point search snapshot.
+            state.realAi = null;
+            state.realEvidence = [];
+            state.settings.lastDataLoad = `行情 OK；AI 失敗：${error.message}`;
+            setWatchFeedback(`${loadedMessage} AI 暫不可用：${error.message}`);
+          }
           saveSettings();
         } else {
           state.realStock = null;
@@ -3361,10 +4573,20 @@
         } catch (error) {
           state.settings.lastDataLoad = `自選股同步失敗：${error.message}`;
         }
+        await loadWatchlistAlerts();
         saveSettings();
         renderSettings();
       }
       renderWatch();
+    });
+    document.getElementById("sendChat").addEventListener("click", () => {
+      askChat(document.getElementById("chatInput").value);
+    });
+    document.getElementById("chatInput").addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        askChat(e.target.value);
+      }
     });
     document.getElementById("symbolSearch").addEventListener("keydown", e => {
       if (e.key === "Enter") document.getElementById("loadStock").click();
@@ -3495,6 +4717,7 @@
     });
     document.getElementById("verifyOpenAiLive").addEventListener("click", verifyOpenAiLiveFlow);
     document.getElementById("verifySourceLive").addEventListener("click", verifySourceFetchLiveFlow);
+    window.addEventListener("stockai-google-loaded", renderGoogleSignIn);
     document.getElementById("testHealth").addEventListener("click", async () => {
       const baseUrl = document.getElementById("apiBaseUrl").value.replace(/\/+$/, "");
       state.settings.health = "測試中...";
@@ -3516,6 +4739,7 @@
     if (state.settings.authToken) {
       refreshAuthMe().catch(() => {});
     }
+    loadGoogleAuthConfig().catch(() => {});
     document.getElementById("runBacktest").click();
   </script>
 </body>

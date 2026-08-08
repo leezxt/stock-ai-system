@@ -40,6 +40,11 @@ public class StockController {
         return ApiResponse.of(stockService.prices(market, symbol));
     }
 
+    @GetMapping("/stocks/{market}/{symbol}/data-lineage")
+    ApiResponse<DataLineageResponse> dataLineage(@PathVariable Market market, @PathVariable String symbol) {
+        return ApiResponse.of(stockService.dataLineage(market, symbol));
+    }
+
     @GetMapping("/stocks/{market}/{symbol}/technical-summary")
     ApiResponse<TechnicalSummaryResponse> technicalSummary(@PathVariable Market market, @PathVariable String symbol) {
         return ApiResponse.of(stockService.technicalSummary(market, symbol));

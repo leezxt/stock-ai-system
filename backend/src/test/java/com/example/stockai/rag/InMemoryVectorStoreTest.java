@@ -47,6 +47,37 @@ class InMemoryVectorStoreTest {
         assertThat(hits.get(0).document().chunk().chunkId()).isEqualTo("chunk-news");
     }
 
+    @Test
+    void filtersOutVectorsFromAnotherEmbeddingFamily() {
+        InMemoryVectorStore store = new InMemoryVectorStore();
+        store.upsert(List.of(
+            new VectorDocument(
+                new DocumentChunk("chunk-hash", "AAPL", Market.US, DocumentType.NEWS, "Hash", "Test", Instant.parse("2026-07-06T00:00:00Z"), "Hash content"),
+                "hash-embedding-v1",
+                List.of(1.0, 0.0)
+            ),
+            new VectorDocument(
+                new DocumentChunk("chunk-openai", "AAPL", Market.US, DocumentType.NEWS, "OpenAI", "Test", Instant.parse("2026-07-06T00:00:00Z"), "OpenAI content"),
+                "openai-text-embedding-3-small-dim16",
+                List.of(1.0, 0.0)
+            )
+        ));
+
+        List<VectorSearchHit> hits = store.search(new VectorSearchQuery(
+            List.of(1.0, 0.0),
+            5,
+            "AAPL",
+            Market.US,
+            DocumentType.NEWS,
+            null,
+            null,
+            "",
+            "openai-text-embedding-3-small-dim16"
+        ));
+
+        assertThat(hits).extracting(hit -> hit.document().chunk().chunkId()).containsExactly("chunk-openai");
+    }
+
     private static VectorDocument document(
         String chunkId,
         String symbol,

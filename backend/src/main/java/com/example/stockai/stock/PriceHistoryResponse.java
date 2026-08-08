@@ -4,5 +4,9 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record PriceHistoryResponse(List<PricePoint> prices) {
-    public record PricePoint(String date, BigDecimal close) {}
+    public record PricePoint(String date, BigDecimal close, String source) {
+        public PricePoint(String date, BigDecimal close) {
+            this(date, close, "");
+        }
+    }
 }

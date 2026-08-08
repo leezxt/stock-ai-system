@@ -30,5 +30,11 @@ class HealthControllerTest {
         assertThat(response.providers().twseEndpointConfigured()).isTrue();
         assertThat(response.providers().twseDisclosureConfigured()).isTrue();
         assertThat(response.providers().twseDisclosureUrl()).contains("ajax_t05st01");
+        assertThat(response.providers().ragEmbeddingProvider()).isEqualTo("hash");
+        assertThat(response.providers().ragEmbeddingModel()).isEqualTo("hash-embedding-v1");
+        assertThat(response.providers().ragEmbeddingDimension()).isEqualTo(16);
+        assertThat(response.providers().ragEmbeddingConfigured()).isTrue();
+        assertThat(response.providers().secretsEncryptionConfigured()).isFalse();
+        assertThat(response.aiTelemetry()).isEmpty();
     }
 }

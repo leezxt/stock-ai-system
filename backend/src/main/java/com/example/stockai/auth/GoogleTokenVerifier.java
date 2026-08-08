@@ -24,7 +24,7 @@ public class GoogleTokenVerifier {
     private static final Pattern JSON_FIELD = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"");
     private final String clientId;
 
-    public GoogleTokenVerifier(@Value("${stockai.google.client-id:}") String clientId) {
+    public GoogleTokenVerifier(@Value("${stockai.google.client-id:${STOCKAI_GOOGLE_CLIENT_ID:}}") String clientId) {
         this.clientId = clientId == null ? "" : clientId.trim();
     }
 
@@ -61,6 +61,14 @@ public class GoogleTokenVerifier {
         } catch (Exception ex) {
             throw new ResponseStatusException(UNAUTHORIZED, "google token verification failed", ex);
         }
+    }
+
+    boolean configured() {
+        return !clientId.isBlank();
+    }
+
+    String clientId() {
+        return clientId;
     }
 
     private static String readJsonField(String body, String field) {
