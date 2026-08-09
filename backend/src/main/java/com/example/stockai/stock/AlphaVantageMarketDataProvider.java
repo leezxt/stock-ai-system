@@ -10,6 +10,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -95,11 +97,12 @@ class AlphaVantageMarketDataProvider {
             throw new IllegalArgumentException("not enough daily points for " + symbol);
         }
 
-        List<BigDecimal> prices = dates.stream()
+        List<PriceBar> bars = dates.stream()
             .limit(23)
             .sorted()
-            .map(date -> close(timeSeries, date))
+            .map(date -> new PriceBar(LocalDate.parse(date), close(timeSeries, date), "alpha-vantage"))
             .toList();
+        LocalDate latestDate = LocalDate.parse(dates.get(0));
 
         BigDecimal lastPrice = close(timeSeries, dates.get(0));
         BigDecimal previousClose = close(timeSeries, dates.get(1));
@@ -117,8 +120,10 @@ class AlphaVantageMarketDataProvider {
             fallback == null ? "USD" : fallback.currency(),
             lastPrice,
             changePercent,
-            prices,
-            "alpha-vantage"
+            bars.stream().map(PriceBar::close).toList(),
+            "alpha-vantage",
+            bars,
+            latestDate.atStartOfDay(ZoneId.of("America/New_York")).toInstant()
         );
     }
 

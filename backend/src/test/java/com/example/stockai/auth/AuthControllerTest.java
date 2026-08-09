@@ -35,4 +35,15 @@ class AuthControllerTest {
         authenticated.setCookies(new Cookie(AuthService.SESSION_COOKIE, token));
         assertThat(controller.me(authenticated).data().email()).isEqualTo("demo@example.com");
     }
+
+    @Test
+    void googleConfigExposesOnlyPublicClientConfiguration() {
+        AuthService authService = new AuthService(new UserStore(tempDir.resolve("users-config.txt")), "test-secret-that-is-at-least-32-bytes", 3600);
+        AuthController controller = new AuthController(authService, new GoogleTokenVerifier("public-client-id"), new RequestGuard(authService));
+
+        var config = controller.googleConfig().data();
+
+        assertThat(config.configured()).isTrue();
+        assertThat(config.clientId()).isEqualTo("public-client-id");
+    }
 }

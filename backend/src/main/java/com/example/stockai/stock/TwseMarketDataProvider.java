@@ -8,6 +8,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -93,6 +96,10 @@ class TwseMarketDataProvider {
         List<BigDecimal> prices = fallback == null || fallback.prices().isEmpty()
             ? List.of(close)
             : appendLast(fallback.prices(), close);
+        LocalDate quoteDate = LocalDate.now(ZoneId.of("Asia/Taipei"));
+        List<PriceBar> bars = fallback != null && !fallback.priceHistory().isEmpty()
+            ? mergePriceHistory(fallback.priceHistory(), quoteDate, close)
+            : fallback == null ? List.of(new PriceBar(quoteDate, close, "twse-openapi")) : List.of();
         return new StockRecord(
             code + ".TW",
             name,
@@ -101,7 +108,9 @@ class TwseMarketDataProvider {
             close,
             changePercent,
             prices,
-            "twse-openapi"
+            "twse-openapi",
+            bars,
+            quoteDate.atStartOfDay(ZoneId.of("Asia/Taipei")).toInstant()
         );
     }
 
@@ -125,6 +134,17 @@ class TwseMarketDataProvider {
             return prices;
         }
         return java.util.stream.Stream.concat(prices.stream().skip(1), java.util.stream.Stream.of(close)).toList();
+    }
+
+    private static List<PriceBar> mergePriceHistory(List<PriceBar> history, LocalDate quoteDate, BigDecimal close) {
+        List<PriceBar> bars = new ArrayList<>(history);
+        PriceBar latest = new PriceBar(quoteDate, close, "twse-openapi");
+        if (bars.get(bars.size() - 1).date().equals(quoteDate)) {
+            bars.set(bars.size() - 1, latest);
+        } else {
+            bars.add(latest);
+        }
+        return List.copyOf(bars);
     }
 
     private static BigDecimal decimal(Object value) {

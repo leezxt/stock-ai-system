@@ -13,7 +13,8 @@ public record VectorSearchQuery(
     DocumentType docType,
     Instant publishedFrom,
     Instant publishedTo,
-    String ownerEmail
+    String ownerEmail,
+    String embeddingModel
 ) {
     public VectorSearchQuery(
         List<Double> embedding,
@@ -24,7 +25,20 @@ public record VectorSearchQuery(
         Instant publishedFrom,
         Instant publishedTo
     ) {
-        this(embedding, topK, symbol, market, docType, publishedFrom, publishedTo, "");
+        this(embedding, topK, symbol, market, docType, publishedFrom, publishedTo, "", null);
+    }
+
+    public VectorSearchQuery(
+        List<Double> embedding,
+        int topK,
+        String symbol,
+        Market market,
+        DocumentType docType,
+        Instant publishedFrom,
+        Instant publishedTo,
+        String ownerEmail
+    ) {
+        this(embedding, topK, symbol, market, docType, publishedFrom, publishedTo, ownerEmail, null);
     }
 
     public VectorSearchQuery {
@@ -42,5 +56,6 @@ public record VectorSearchQuery(
         }
         symbol = symbol == null || symbol.isBlank() ? null : symbol.trim();
         ownerEmail = ownerEmail == null ? "" : ownerEmail.trim().toLowerCase();
+        embeddingModel = embeddingModel == null || embeddingModel.isBlank() ? null : embeddingModel.trim();
     }
 }

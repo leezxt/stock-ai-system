@@ -3,6 +3,8 @@ package com.example.stockai.stock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +32,12 @@ class FinMindTwMarketDataProviderTest {
             new BigDecimal("1030"),
             new BigDecimal("1045"),
             new BigDecimal("1050")
+        );
+        assertThat(record.priceHistory()).extracting(PriceBar::date)
+            .containsExactly(LocalDate.of(2026, 7, 7), LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 9));
+        assertThat(record.priceHistory()).extracting(PriceBar::source).containsOnly("finmind");
+        assertThat(record.observedAt()).isEqualTo(
+            LocalDate.of(2026, 7, 9).atStartOfDay(ZoneId.of("Asia/Taipei")).toInstant()
         );
     }
 

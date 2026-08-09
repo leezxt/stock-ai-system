@@ -6,8 +6,12 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.IntStream;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,20 +23,25 @@ import com.example.stockai.market.Market;
 public class StockService {
     private final MarketDataProvider marketDataProvider;
     private final StockSnapshotStore stockSnapshotStore;
+    private final PredictionModel predictionModel;
 
     public StockService(MarketDataProvider marketDataProvider) {
-        this.marketDataProvider = marketDataProvider;
-        this.stockSnapshotStore = null;
+        this(marketDataProvider, null, new LocalLogisticPredictionModel());
     }
 
     @Autowired
-    public StockService(MarketDataProvider marketDataProvider, Optional<StockSnapshotStore> stockSnapshotStore) {
-        this(marketDataProvider, stockSnapshotStore.orElse(null));
+    public StockService(
+        MarketDataProvider marketDataProvider,
+        Optional<StockSnapshotStore> stockSnapshotStore,
+        Optional<PredictionModel> predictionModel
+    ) {
+        this(marketDataProvider, stockSnapshotStore.orElse(null), predictionModel.orElseGet(LocalLogisticPredictionModel::new));
     }
 
-    private StockService(MarketDataProvider marketDataProvider, StockSnapshotStore stockSnapshotStore) {
+    StockService(MarketDataProvider marketDataProvider, StockSnapshotStore stockSnapshotStore, PredictionModel predictionModel) {
         this.marketDataProvider = marketDataProvider;
         this.stockSnapshotStore = stockSnapshotStore;
+        this.predictionModel = predictionModel == null ? new LocalLogisticPredictionModel() : predictionModel;
     }
 
     List<Market> markets() {
@@ -60,24 +69,74 @@ public class StockService {
             stock.currency(),
             stock.timezone(),
             stock.source(),
-            new StockSummaryResponse.PriceSnapshot(stock.symbol(), stock.market(), stock.lastPrice(), stock.changePercent(), stock.currency(), Instant.now())
+            new StockSummaryResponse.PriceSnapshot(stock.symbol(), stock.market(), stock.lastPrice(), stock.changePercent(), stock.currency(), observationTime(stock))
         );
     }
 
     PriceHistoryResponse prices(Market market, String symbol) {
         StockRecord stock = get(market, symbol);
         ZoneId marketZone = ZoneId.of(stock.timezone());
-        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), marketZone);
-        List<LocalDate> dates = recentTradingDates(prices.size(), marketZone);
-        List<PriceHistoryResponse.PricePoint> points = IntStream.range(0, prices.size())
-            .mapToObj(i -> new PriceHistoryResponse.PricePoint(dates.get(i).toString(), prices.get(i)))
+        List<PriceBar> bars = oneMonthTradingBars(stock, marketZone);
+        List<PriceHistoryResponse.PricePoint> points = bars.stream()
+            .map(bar -> new PriceHistoryResponse.PricePoint(bar.date().toString(), bar.close(), bar.source()))
             .toList();
         return new PriceHistoryResponse(points);
     }
 
+    DataLineageResponse dataLineage(Market market, String symbol) {
+        StockRecord stock = get(market, symbol);
+        List<PriceBar> bars = oneMonthTradingBars(stock, ZoneId.of(stock.timezone()));
+        List<String> sources = bars.stream()
+            .map(PriceBar::source)
+            .filter(value -> value != null && !value.isBlank())
+            .distinct()
+            .toList();
+        List<String> findings = new ArrayList<>();
+        Set<java.time.LocalDate> seenDates = new HashSet<>();
+        boolean duplicateDate = false;
+        boolean invalidClose = false;
+        for (PriceBar bar : bars) {
+            if (!seenDates.add(bar.date())) duplicateDate = true;
+            if (bar.close() == null || bar.close().signum() <= 0) invalidClose = true;
+        }
+        if (bars.isEmpty()) findings.add("NO_PRICE_HISTORY");
+        if (bars.size() == 1) findings.add("SNAPSHOT_ONLY");
+        if (duplicateDate) findings.add("DUPLICATE_DATE");
+        if (invalidClose) findings.add("INVALID_CLOSE");
+        if (sources.size() > 1) findings.add("MIXED_PRICE_SOURCES");
+        if (stock.adjustmentStatus().equals("UNVERIFIED")) findings.add("ADJUSTMENT_NOT_VERIFIED");
+        if (stock.corporateActions().isEmpty()) {
+            findings.add(stock.adjustmentStatus().equals("ADJUSTED_CLOSE") ? "NO_ACTIONS_IN_WINDOW" : "CORPORATE_ACTION_FEED_NOT_AVAILABLE");
+        }
+        if (stock.source().toLowerCase().startsWith("mock")) findings.add("MOCK_SOURCE");
+        String integrityStatus = duplicateDate || invalidClose || bars.isEmpty()
+            ? "INVALID"
+            : stock.source().toLowerCase().startsWith("mock") ? "MOCK"
+            : findings.isEmpty() ? "OK" : "PARTIAL";
+        String dataFrom = bars.stream().map(PriceBar::date).min(Comparator.naturalOrder()).map(Object::toString).orElse(null);
+        String dataTo = bars.stream().map(PriceBar::date).max(Comparator.naturalOrder()).map(Object::toString).orElse(null);
+        return new DataLineageResponse(
+            stock.symbol(),
+            stock.market(),
+            stock.source(),
+            stock.adjustmentStatus(),
+            observationTime(stock),
+            bars.size(),
+            dataFrom,
+            dataTo,
+            sources,
+            integrityStatus,
+            findings,
+            stock.corporateActions(),
+            MarketDataQuality.forTechnical(bars, stock.source()),
+            MarketDataQuality.forPrediction(bars, stock.source())
+        );
+    }
+
     TechnicalSummaryResponse technicalSummary(Market market, String symbol) {
         StockRecord stock = get(market, symbol);
-        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), ZoneId.of(stock.timezone()));
+        List<PriceBar> bars = oneMonthTradingBars(stock, ZoneId.of(stock.timezone()));
+        List<BigDecimal> prices = closePrices(bars);
         return new TechnicalSummaryResponse(
             stock.symbol(),
             stock.market(),
@@ -87,28 +146,43 @@ public class StockService {
             rsi(prices, 14),
             ema(prices, 12).compareTo(ema(prices, 26)) >= 0 ? "BULLISH" : "BEARISH",
             averageCloseRange(prices, 14),
-            Instant.now()
+            Instant.now(),
+            MarketDataQuality.forTechnical(bars, stock.source())
         );
     }
 
     PredictionResponse prediction(Market market, String symbol, int horizonDays) {
         StockRecord stock = get(market, symbol);
-        List<BigDecimal> prices = oneMonthTradingPrices(stock.prices(), ZoneId.of(stock.timezone()));
+        List<PriceBar> bars = oneMonthTradingBars(stock, ZoneId.of(stock.timezone()));
+        List<BigDecimal> prices = closePrices(bars);
+        PredictionModel.PredictionEstimate estimate = predictionModel.predict(bars, horizonDays)
+            .orElseGet(() -> heuristicEstimate(prices, horizonDays));
+        return new PredictionResponse(
+            stock.symbol(),
+            stock.market(),
+            horizonDays,
+            estimate.upProbability(),
+            estimate.expectedReturn(),
+            estimate.volatility(),
+            estimate.riskLevel(),
+            estimate.modelVersion(),
+            Instant.now(),
+            MarketDataQuality.forPrediction(bars, stock.source())
+        );
+    }
+
+    private static PredictionModel.PredictionEstimate heuristicEstimate(List<BigDecimal> prices, int horizonDays) {
         BigDecimal momentum = prices.size() < 2 || prices.get(0).signum() == 0
             ? BigDecimal.ZERO
             : prices.get(prices.size() - 1).divide(prices.get(0), 8, RoundingMode.HALF_UP).subtract(BigDecimal.ONE);
         BigDecimal volatility = closeReturnVolatility(prices);
         BigDecimal upProbability = clamp(new BigDecimal("0.50").add(momentum.multiply(new BigDecimal("2.0"))), new BigDecimal("0.30"), new BigDecimal("0.70"));
-        return new PredictionResponse(
-            stock.symbol(),
-            stock.market(),
-            horizonDays,
+        return new PredictionModel.PredictionEstimate(
             upProbability,
             momentum.multiply(BigDecimal.valueOf(Math.min(horizonDays, 60))).divide(BigDecimal.valueOf(Math.max(1, prices.size())), 8, RoundingMode.HALF_UP),
             volatility,
             volatility.compareTo(new BigDecimal("0.03")) > 0 ? "HIGH" : volatility.compareTo(new BigDecimal("0.015")) > 0 ? "MEDIUM" : "LOW",
-            "heuristic-momentum-v1",
-            Instant.now()
+            "heuristic-momentum-v1"
         );
     }
 
@@ -171,18 +245,68 @@ public class StockService {
         return BigDecimal.valueOf(Math.sqrt(variance / returns.length)).setScale(8, RoundingMode.HALF_UP);
     }
 
-    private static List<BigDecimal> oneMonthTradingPrices(List<BigDecimal> rawPrices, ZoneId zoneId) {
-        List<BigDecimal> prices = rawPrices == null ? List.of() : rawPrices.stream()
+    private static List<PriceBar> oneMonthTradingBars(StockRecord stock, ZoneId zoneId) {
+        LocalDate end = LocalDate.now(zoneId);
+        LocalDate start = end.minusMonths(1);
+        List<PriceBar> history = stock.priceHistory() == null ? List.of() : stock.priceHistory().stream()
+            .filter(bar -> bar != null && !bar.date().isBefore(start) && !bar.date().isAfter(end))
+            .sorted(java.util.Comparator.comparing(PriceBar::date))
+            .toList();
+        if (!history.isEmpty()) {
+            return history;
+        }
+
+        List<BigDecimal> prices = stock.prices() == null ? List.of() : stock.prices().stream()
             .filter(value -> value != null)
             .toList();
-        int targetSize = recentTradingDates(0, zoneId).size();
         if (prices.isEmpty()) {
-            return List.of(BigDecimal.ZERO);
+            return List.of(new PriceBar(end, BigDecimal.ZERO, stock.source()));
         }
-        if (prices.size() >= 15) {
-            return prices.size() > targetSize ? prices.subList(prices.size() - targetSize, prices.size()) : prices;
+
+        // A real provider without dated bars is still only a quote snapshot.
+        // Do not manufacture a month of history from that one observation.
+        if (!isMockSource(stock.source())) {
+            return List.of(new PriceBar(end, prices.get(prices.size() - 1), stock.source()));
         }
-        return expandPrices(prices, targetSize);
+
+        int targetSize = recentTradingDates(0, zoneId).size();
+        List<BigDecimal> expanded = expandPrices(prices, targetSize);
+        List<LocalDate> dates = recentTradingDates(expanded.size(), zoneId);
+        return IntStream.range(0, expanded.size())
+            .mapToObj(i -> new PriceBar(dates.get(i), expanded.get(i), stock.source()))
+            .toList();
+    }
+
+    private static List<BigDecimal> closePrices(List<PriceBar> bars) {
+        return bars.stream().map(PriceBar::close).toList();
+    }
+
+    private static boolean isMockSource(String source) {
+        return source == null || source.isBlank() || source.startsWith("mock");
+    }
+
+    /**
+     * Returns the market/provider observation time, not the time at which this
+     * request happened to reach the backend. Historical daily sources only
+     * provide a trading date, so their timestamp is normalized to that date's
+     * market timezone at midnight. Mock records intentionally fall back to the
+     * current time because they have no upstream observation.
+     */
+    private static Instant observationTime(StockRecord stock) {
+        if (stock.observedAt() != null) {
+            return stock.observedAt();
+        }
+        if (stock.priceHistory() != null && !stock.priceHistory().isEmpty()) {
+            LocalDate latestDate = stock.priceHistory().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(PriceBar::date)
+                .max(LocalDate::compareTo)
+                .orElse(null);
+            if (latestDate != null) {
+                return latestDate.atStartOfDay(ZoneId.of(stock.timezone())).toInstant();
+            }
+        }
+        return Instant.now();
     }
 
     private static List<BigDecimal> expandPrices(List<BigDecimal> prices, int targetSize) {

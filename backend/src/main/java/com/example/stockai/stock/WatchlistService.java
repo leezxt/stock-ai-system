@@ -96,6 +96,20 @@ class WatchlistService {
         save(fileForUserSave(userEmail), scoped);
     }
 
+    synchronized boolean contains(String userEmail, Market market, String symbol) {
+        String normalized = symbol == null ? "" : symbol.trim().toUpperCase();
+        if (jdbcTemplate != null) {
+            Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM stockai_watchlist
+                WHERE email = ? AND market = ? AND symbol = ?
+                """, Integer.class, normalizeEmail(userEmail), market.name(), normalized);
+            return count != null && count > 0;
+        }
+        return listFor(fileForUserLoad(userEmail)).stream()
+            .anyMatch(item -> item.market() == market && item.symbol().equalsIgnoreCase(normalized));
+    }
+
     private List<WatchlistItem> listForEmail(String userEmail) {
         List<WatchlistItem> rows = jdbcTemplate.query("""
             SELECT market, symbol

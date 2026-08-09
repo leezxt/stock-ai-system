@@ -2,6 +2,8 @@ package com.example.stockai.stock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -34,6 +36,9 @@ class AlphaVantageMarketDataProviderTest {
             new java.math.BigDecimal("281.2100"),
             new java.math.BigDecimal("286.2500"),
             new java.math.BigDecimal("289.5200")
+        );
+        assertThat(record.observedAt()).isEqualTo(
+            LocalDate.of(2026, 7, 2).atStartOfDay(ZoneId.of("America/New_York")).toInstant()
         );
     }
 }

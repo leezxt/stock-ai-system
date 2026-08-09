@@ -108,6 +108,10 @@ public class InMemoryVectorStore implements VectorStore {
             """);
         sql.append(" AND owner_email = ?");
         params.add(query.ownerEmail());
+        if (query.embeddingModel() != null) {
+            sql.append(" AND embedding_model = ?");
+            params.add(query.embeddingModel());
+        }
         if (query.symbol() != null) {
             sql.append(" AND lower(symbol) = lower(?)");
             params.add(query.symbol());
@@ -150,6 +154,9 @@ public class InMemoryVectorStore implements VectorStore {
     private static boolean matches(VectorDocument document, VectorSearchQuery query) {
         DocumentChunk chunk = document.chunk();
         if (!query.ownerEmail().equalsIgnoreCase(chunk.ownerEmail())) {
+            return false;
+        }
+        if (query.embeddingModel() != null && !query.embeddingModel().equals(document.embeddingModel())) {
             return false;
         }
         if (query.symbol() != null && !query.symbol().equalsIgnoreCase(chunk.symbol())) {

@@ -32,7 +32,8 @@ class RagContextService {
     }
 
     RagContext buildChatContext(StockRecord stock, Integer horizonDays, String message, String ownerEmail) {
-        return build(stock, horizonOrDefault(horizonDays), stock.symbol() + " " + message, ownerEmail);
+        RagContext context = build(stock, horizonOrDefault(horizonDays), stock.symbol() + " " + message, ownerEmail);
+        return context.withChatToolPlan(ChatToolRouter.plan(context, message));
     }
 
     private RagContext build(StockRecord stock, int horizonDays, String queryText, String ownerEmail) {

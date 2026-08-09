@@ -1,5 +1,14 @@
 $ErrorActionPreference = "Stop"
 
+$encryptionKey = if ([string]::IsNullOrWhiteSpace($env:STOCKAI_SECRETS_ENCRYPTION_KEY)) {
+  $env:STOCKAI_AUTH_SECRET
+} else {
+  $env:STOCKAI_SECRETS_ENCRYPTION_KEY
+}
+if ([string]::IsNullOrWhiteSpace($encryptionKey)) {
+  throw "Set STOCKAI_SECRETS_ENCRYPTION_KEY (or STOCKAI_AUTH_SECRET) in local-env.cmd before running account settings smoke. The backend intentionally refuses to store account API keys without encryption."
+}
+
 $baseUrl = if ([string]::IsNullOrWhiteSpace($env:STOCK_AI_BASE_URL)) {
   "http://localhost:8080/api/v1"
 } else {

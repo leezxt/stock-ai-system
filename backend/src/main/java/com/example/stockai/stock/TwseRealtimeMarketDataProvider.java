@@ -10,6 +10,13 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -105,9 +112,22 @@ class TwseRealtimeMarketDataProvider {
                 .divide(previousClose, 6, RoundingMode.HALF_UP)
                 .multiply(new BigDecimal("100"))
                 .setScale(2, RoundingMode.HALF_UP);
-            List<BigDecimal> prices = fallback == null || fallback.prices().isEmpty()
+            LocalDate quoteDate = quoteDate(row.get("d"));
+            Instant observedAt = quoteObservedAt(row.get("d"), row.get("t"));
+            // A realtime quote is a snapshot, not another historical close.
+            // Keep a dated provider history untouched; appending or replacing
+            // its latest bar would mix different adjustment/source semantics
+            // and can create a false jump in the chart. The summary still uses
+            // `latest` so the current quote remains visible separately.
+            List<PriceBar> bars = fallback != null && !fallback.priceHistory().isEmpty()
+                ? List.copyOf(fallback.priceHistory())
+                : mergePriceHistory(fallback, quoteDate, latest);
+            List<BigDecimal> prices = bars.isEmpty()
                 ? List.of(latest)
-                : appendLast(fallback.prices(), latest);
+                : bars.stream().map(PriceBar::close).toList();
+            String source = fallback != null && !fallback.priceHistory().isEmpty() && !fallback.source().isBlank()
+                ? fallback.source() + "+twse-realtime"
+                : "twse-realtime";
             return Optional.of(new StockRecord(
                 code + ".TW",
                 text(row.get("n"), fallback == null ? code : fallback.name()),
@@ -116,7 +136,9 @@ class TwseRealtimeMarketDataProvider {
                 latest,
                 changePercent,
                 prices,
-                "twse-realtime"
+                source,
+                bars,
+                observedAt
             ));
         }
         return Optional.empty();
@@ -141,11 +163,50 @@ class TwseRealtimeMarketDataProvider {
         return jsonParser.parseMap(response.body());
     }
 
-    private static List<BigDecimal> appendLast(List<BigDecimal> prices, BigDecimal latest) {
-        if (prices.get(prices.size() - 1).compareTo(latest) == 0) {
-            return prices;
+    private static List<PriceBar> mergePriceHistory(StockRecord fallback, LocalDate quoteDate, BigDecimal latest) {
+        if (fallback == null || fallback.priceHistory().isEmpty()) {
+            return List.of(new PriceBar(quoteDate, latest, "twse-realtime"));
         }
-        return java.util.stream.Stream.concat(prices.stream().skip(1), java.util.stream.Stream.of(latest)).toList();
+        List<PriceBar> bars = new ArrayList<>(fallback.priceHistory());
+        PriceBar latestBar = new PriceBar(quoteDate, latest, "twse-realtime");
+        if (bars.get(bars.size() - 1).date().equals(quoteDate)) {
+            bars.set(bars.size() - 1, latestBar);
+        } else {
+            bars.add(latestBar);
+        }
+        return List.copyOf(bars);
+    }
+
+    private static LocalDate quoteDate(Object raw) {
+        String value = text(raw, "");
+        if (value.matches("\\d{8}")) {
+            try {
+                return LocalDate.of(
+                    Integer.parseInt(value.substring(0, 4)),
+                    Integer.parseInt(value.substring(4, 6)),
+                    Integer.parseInt(value.substring(6, 8))
+                );
+            } catch (RuntimeException ignored) {
+                // Fall through to the local market date for malformed upstream data.
+            }
+        }
+        return LocalDate.now(ZoneId.of("Asia/Taipei"));
+    }
+
+    private static Instant quoteObservedAt(Object rawDate, Object rawTime) {
+        LocalDate date = quoteDate(rawDate);
+        String value = text(rawTime, "");
+        if (!value.isBlank()) {
+            try {
+                LocalTime time = LocalTime.parse(value, DateTimeFormatter.ISO_LOCAL_TIME);
+                return LocalDateTime.of(date, time)
+                    .atZone(ZoneId.of("Asia/Taipei"))
+                    .toInstant();
+            } catch (RuntimeException ignored) {
+                // Use the trading date when TWSE omits or malforms the quote time.
+            }
+        }
+        return date.atStartOfDay(ZoneId.of("Asia/Taipei")).toInstant();
     }
 
     private static BigDecimal firstDecimal(Object... values) {

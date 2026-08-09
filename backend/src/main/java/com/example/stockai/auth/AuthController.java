@@ -48,6 +48,11 @@ public class AuthController {
         return sessionResponse(servletRequest, authService.loginGoogleVerifiedEmail(profile.email()));
     }
 
+    @GetMapping("/google/config")
+    ApiResponse<GoogleConfig> googleConfig() {
+        return ApiResponse.of(new GoogleConfig(googleTokenVerifier.configured(), googleTokenVerifier.clientId()));
+    }
+
     @GetMapping("/me")
     ApiResponse<AuthService.AuthUser> me(HttpServletRequest request) {
         return ApiResponse.of(requestGuard.requireUser(request, "auth-me", 120));
@@ -85,5 +90,6 @@ public class AuthController {
 
     record AuthRequest(String email, String password) {}
     record GoogleAuthRequest(String credential) {}
+    record GoogleConfig(boolean configured, String clientId) {}
     record AuthSessionResponse(AuthService.AuthUser user, long expiresAt) {}
 }

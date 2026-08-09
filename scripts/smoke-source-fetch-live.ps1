@@ -11,6 +11,11 @@ try {
 }
 
 $providers = $health.providers
+$ragProvider = [string]$providers.ragEmbeddingProvider
+if ($ragProvider -eq "openai" -and -not $providers.ragEmbeddingConfigured) {
+  Write-Host "BLOCKED: RAG embedding provider is openai but no embedding key is configured. Set STOCKAI_RAG_EMBEDDING_API_KEY (or OPENAI_API_KEY), restart backend, then rerun."
+  exit 1
+}
 $failed = $false
 $seed = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $authBody = @{ email = "source-smoke-$seed@example.test"; password = "Passw0rd!-smoke-$seed" } | ConvertTo-Json

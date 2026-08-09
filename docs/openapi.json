@@ -37,13 +37,18 @@
                     },
                     "providers": {
                       "type": "object",
-                      "required": ["openAiConfigured", "openAiModel", "alphaVantageConfigured", "twseEndpointConfigured", "twseStockDayAllUrl"],
+                      "required": ["openAiConfigured", "openAiModel", "alphaVantageConfigured", "twseEndpointConfigured", "twseStockDayAllUrl", "ragEmbeddingProvider", "ragEmbeddingModel", "ragEmbeddingDimension", "ragEmbeddingConfigured", "secretsEncryptionConfigured"],
                       "properties": {
                         "openAiConfigured": { "type": "boolean" },
                         "openAiModel": { "type": "string", "example": "gpt-5.5" },
                         "alphaVantageConfigured": { "type": "boolean" },
                         "twseEndpointConfigured": { "type": "boolean" },
-                        "twseStockDayAllUrl": { "type": "string" }
+                        "twseStockDayAllUrl": { "type": "string" },
+                        "ragEmbeddingProvider": { "type": "string", "enum": ["hash", "openai"] },
+                        "ragEmbeddingModel": { "type": "string", "example": "text-embedding-3-small" },
+                        "ragEmbeddingDimension": { "type": "integer", "const": 16 },
+                        "ragEmbeddingConfigured": { "type": "boolean" },
+                        "secretsEncryptionConfigured": { "type": "boolean" }
                       }
                     }
                   }
@@ -51,6 +56,42 @@
               }
             }
           }
+        }
+      }
+    },
+    "/auth/google/config": {
+      "get": {
+        "summary": "Google login configuration",
+        "description": "Returns only the public Google client ID and whether Google Identity Services login is enabled.",
+        "responses": {
+          "200": {
+            "description": "Google login configuration"
+          }
+        }
+      }
+    },
+    "/auth/google": {
+      "post": {
+        "summary": "Login with Google credential",
+        "description": "The backend verifies the Google Identity Services credential before issuing the HttpOnly session cookie.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["credential"],
+                "properties": {
+                  "credential": { "type": "string", "minLength": 1, "writeOnly": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Authenticated session created" },
+          "401": { "description": "Google credential rejected" },
+          "503": { "description": "Google login is not configured" }
         }
       }
     },
@@ -79,7 +120,7 @@
     "/stocks/{market}/{symbol}/summary": {
       "get": {
         "summary": "Stock summary",
-        "description": "Frontend also reads `data.source` to decide whether market data is live or mock fallback.",
+        "description": "Frontend also reads `data.source` to decide whether market data is live or mock fallback. `data.priceSnapshot.updatedAt` is the provider observation time (intraday quote time when available, otherwise the latest trading date at the market timezone); mock data may use the backend response time.",
         "parameters": [
           { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
           { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } }
@@ -92,6 +133,7 @@
     "/stocks/{market}/{symbol}/prices": {
       "get": {
         "summary": "Price history",
+        "description": "Each price point preserves the provider trading date and source. Mock data may use generated dates; a realtime-only fallback returns one quote instead of manufacturing a historical series.",
         "parameters": [
           { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
           { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } },
@@ -99,6 +141,35 @@
         ],
         "responses": {
           "200": { "description": "Price history" }
+        }
+      }
+    },
+    "/stocks/{market}/{symbol}/data-lineage": {
+      "get": {
+        "summary": "Price data lineage and corporate actions",
+        "description": "Returns the exact price-series source, observation time, adjustment status, integrity findings, and provider-supplied dividend or split events. SNAPSHOT_ONLY means a latest quote is summary-only and is not appended to historical bars. The service never infers corporate actions from price gaps.",
+        "parameters": [
+          { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Data lineage and corporate actions" }
+        }
+      }
+    },
+    "/stocks/{market}/{symbol}/news-score": {
+      "get": {
+        "summary": "Explainable stock news score",
+        "description": "Requires authentication and evaluates only indexed NEWS documents visible to the current account. Returns a deterministic -100..100 signal with per-article source, relevance, matched-term rationale, impact, and confidence. It does not predict price and returns INSUFFICIENT_DATA when no news is indexed.",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [
+          { "name": "market", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Market" } },
+          { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 10, "default": 5 } }
+        ],
+        "responses": {
+          "200": { "description": "News evaluation" },
+          "401": { "description": "Authentication required" }
         }
       }
     },
@@ -110,7 +181,14 @@
           { "name": "symbol", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
-          "200": { "description": "Technical indicators" }
+          "200": {
+            "description": "Technical indicators with sample and availability metadata. Clients must hide fields listed in data.dataQuality.unavailableIndicators.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TechnicalSummaryResponse" }
+              }
+            }
+          }
         }
       }
     },
@@ -123,7 +201,14 @@
           { "name": "horizonDays", "in": "query", "required": false, "schema": { "type": "integer", "default": 5 } }
         ],
         "responses": {
-          "200": { "description": "ML or mock prediction" }
+          "200": {
+            "description": "ML or mock prediction with the dated sample range and data availability status.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PredictionResponse" }
+              }
+            }
+          }
         }
       }
     },
@@ -167,7 +252,7 @@
       "post": {
         "summary": "AI chat scoped to selected stock",
         "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
-        "description": "Frontend reads the response `data.source` to show live or fallback chat output.",
+        "description": "Frontend reads `data.source` to show live or fallback output. Backend routes the question through deterministic stock tools before provider execution; `data.intent`, `data.answerStatus`, and `data.tools` expose that route. `data.evidence` contains retrieved documents and `data.citationIds` contains only citation IDs validated against that evidence. `history` is optional bounded context (up to 8 turns / 8,000 characters); history, user text, and documents remain untrusted. Out-of-scope questions fail closed without calling a provider. `/health` also exposes process-local aggregate AI telemetry without prompts or credentials.",
         "requestBody": {
           "required": true,
           "content": {
@@ -218,6 +303,181 @@
         }
       }
     },
+    "/watchlist/alerts": {
+      "get": {
+        "summary": "Evaluate watchlist alert rules",
+        "description": "Returns only the current account's watchlist alert rules and deterministic evaluations. Conditions use quote, percentage change, risk rank, or data-lineage quality; repeated evaluations are deduplicated by state transition and recent local history is included. They are research reminders, not orders or external notifications.",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Alert rules and evaluations" },
+          "401": { "description": "Authentication required" }
+        }
+      },
+      "post": {
+        "summary": "Create a watchlist alert rule",
+        "description": "The symbol must already belong to the current account's watchlist. Supported conditions are PRICE_ABOVE, PRICE_BELOW, CHANGE_PCT_ABOVE, CHANGE_PCT_BELOW, RISK_AT_LEAST, and DATA_QUALITY_NOT_OK.",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WatchlistAlertRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Created alert rule" },
+          "400": { "description": "Invalid condition, threshold, or symbol not in watchlist" },
+          "401": { "description": "Authentication required" }
+        }
+      }
+    },
+    "/watchlist/alerts/scheduler": {
+      "get": {
+        "summary": "Read watchlist alert scheduler status",
+        "description": "Returns account-authenticated operational counters for the optional global evaluator. The scheduler is disabled by default and notificationMode remains LOCAL_ONLY; no email, push, or broker action is attempted.",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Scheduler status",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WatchlistAlertSchedulerStatus" }
+              }
+            }
+          },
+          "401": { "description": "Authentication required" }
+        }
+      }
+    },
+    "/watchlist/alerts/notifications": {
+      "get": {
+        "summary": "List local watchlist alert notifications",
+        "description": "Returns the current account's local-only notification queue. Notifications are created only for newly triggered alert transitions and are never sent to an external channel.",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Local notification queue",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WatchlistAlertNotificationResponse" }
+              }
+            }
+          },
+          "401": { "description": "Authentication required" }
+        }
+      }
+    },
+    "/watchlist/alerts/notifications/{id}": {
+      "put": {
+        "summary": "Mark a local alert notification read or unread",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WatchlistAlertNotificationReadRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated local notification" },
+          "401": { "description": "Authentication required" },
+          "404": { "description": "Notification not found for current account" }
+        }
+      }
+    },
+    "/watchlist/alerts/notifications/read": {
+      "delete": {
+        "summary": "Clear read local alert notifications",
+        "description": "Deletes only READ notifications belonging to the current account. Alert rules and state-transition events remain intact; no external channel is called.",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Cleanup count",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WatchlistAlertNotificationCleanupResponse" }
+              }
+            }
+          },
+          "401": { "description": "Authentication required" }
+        }
+      }
+    },
+    "/watchlist/alerts/notification-preferences": {
+      "get": {
+        "summary": "Read watchlist alert notification preferences",
+        "description": "Returns the current account's local notification preference and explicit external-channel blocking state. Email and push are stored as preference intent only and are not delivered.",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Notification preferences and delivery capability",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WatchlistAlertNotificationPreferenceResponse" }
+              }
+            }
+          },
+          "401": { "description": "Authentication required" }
+        }
+      },
+      "put": {
+        "summary": "Update watchlist alert notification preferences",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WatchlistAlertNotificationPreferenceRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated notification preferences" },
+          "400": { "description": "At least one preference is required" },
+          "401": { "description": "Authentication required" }
+        }
+      }
+    },
+    "/watchlist/alerts/{id}": {
+      "put": {
+        "summary": "Enable or disable a watchlist alert",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WatchlistAlertEnabledRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated alert rule" },
+          "401": { "description": "Authentication required" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a watchlist alert",
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Deleted flag" },
+          "401": { "description": "Authentication required" }
+        }
+      }
+    },
     "/backtests": {
       "post": {
         "summary": "Run strategy backtest",
@@ -231,7 +491,16 @@
           }
         },
         "responses": {
-          "200": { "description": "Backtest result" }
+          "200": {
+            "description": "Close-only historical price replay with technical proxy signals, explicit conditions, costs, status, and trade details.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BacktestResponse" }
+              }
+            }
+          },
+          "400": { "description": "Invalid strategy thresholds" },
+          "401": { "description": "Authentication required" }
         }
       }
     }
@@ -263,6 +532,184 @@
         "properties": {
           "market": { "$ref": "#/components/schemas/Market" },
           "symbol": { "type": "string" }
+        }
+      },
+      "WatchlistAlertCondition": {
+        "type": "string",
+        "enum": ["PRICE_ABOVE", "PRICE_BELOW", "CHANGE_PCT_ABOVE", "CHANGE_PCT_BELOW", "RISK_AT_LEAST", "DATA_QUALITY_NOT_OK"]
+      },
+      "WatchlistAlertRequest": {
+        "type": "object",
+        "required": ["market", "symbol", "condition"],
+        "properties": {
+          "market": { "$ref": "#/components/schemas/Market" },
+          "symbol": { "type": "string" },
+          "condition": { "$ref": "#/components/schemas/WatchlistAlertCondition" },
+          "threshold": { "type": "number", "nullable": true, "description": "Quote currency, percentage points, risk rank LOW=1/MEDIUM=2/HIGH=3; omitted for DATA_QUALITY_NOT_OK." },
+          "enabled": { "type": "boolean", "default": true }
+        }
+      },
+      "WatchlistAlertEnabledRequest": {
+        "type": "object",
+        "required": ["enabled"],
+        "properties": {
+          "enabled": { "type": "boolean" }
+        }
+      },
+      "WatchlistAlertRule": {
+        "type": "object",
+        "required": ["id", "market", "symbol", "condition", "enabled", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "market": { "$ref": "#/components/schemas/Market" },
+          "symbol": { "type": "string" },
+          "condition": { "$ref": "#/components/schemas/WatchlistAlertCondition" },
+          "threshold": { "type": "number", "nullable": true },
+          "enabled": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WatchlistAlertEvaluation": {
+        "type": "object",
+        "required": ["ruleId", "market", "symbol", "condition", "status", "triggered", "newlyTriggered", "source", "dataStatus"],
+        "properties": {
+          "ruleId": { "type": "string" },
+          "market": { "$ref": "#/components/schemas/Market" },
+          "symbol": { "type": "string" },
+          "name": { "type": "string" },
+          "condition": { "$ref": "#/components/schemas/WatchlistAlertCondition" },
+          "threshold": { "type": "number", "nullable": true },
+          "currentValue": { "type": "number", "nullable": true },
+          "currentLabel": { "type": "string" },
+          "status": { "type": "string", "enum": ["TRIGGERED", "NORMAL", "DISABLED", "DATA_UNAVAILABLE"] },
+          "triggered": { "type": "boolean" },
+          "newlyTriggered": { "type": "boolean", "description": "True only when this evaluation changes into TRIGGERED from a different prior state." },
+          "lastTriggeredAt": { "type": "string", "format": "date-time", "nullable": true },
+          "message": { "type": "string" },
+          "source": { "type": "string" },
+          "dataStatus": { "type": "string" },
+          "observedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "WatchlistAlertCenterResponse": {
+        "type": "object",
+        "required": ["rules", "evaluations", "triggeredCount", "newTriggerCount", "recentEvents", "evaluatedAt", "source"],
+        "properties": {
+          "rules": { "type": "array", "items": { "$ref": "#/components/schemas/WatchlistAlertRule" } },
+          "evaluations": { "type": "array", "items": { "$ref": "#/components/schemas/WatchlistAlertEvaluation" } },
+          "triggeredCount": { "type": "integer", "minimum": 0 },
+          "newTriggerCount": { "type": "integer", "minimum": 0, "description": "Number of rules entering TRIGGERED during this evaluation; repeated refreshes are not counted again." },
+          "recentEvents": { "type": "array", "maxItems": 20, "items": { "$ref": "#/components/schemas/WatchlistAlertEvent" } },
+          "evaluatedAt": { "type": "string", "format": "date-time" },
+          "source": { "type": "string" }
+        }
+      },
+      "WatchlistAlertEvent": {
+        "type": "object",
+        "required": ["id", "ruleId", "market", "symbol", "condition", "status", "message", "source", "dataStatus", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "ruleId": { "type": "string" },
+          "market": { "$ref": "#/components/schemas/Market" },
+          "symbol": { "type": "string" },
+          "condition": { "$ref": "#/components/schemas/WatchlistAlertCondition" },
+          "status": { "type": "string", "enum": ["TRIGGERED", "NORMAL", "DISABLED", "DATA_UNAVAILABLE"] },
+          "currentValue": { "type": "number", "nullable": true },
+          "message": { "type": "string" },
+          "source": { "type": "string" },
+          "dataStatus": { "type": "string" },
+          "observedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WatchlistAlertSchedulerStatus": {
+        "type": "object",
+        "required": ["enabled", "fixedDelayMs", "notificationMode", "lastEvaluatedUsers", "lastEvaluatedRules", "lastNewTriggerCount", "lastErrorCount", "lastError"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "fixedDelayMs": { "type": "integer", "minimum": 0 },
+          "notificationMode": { "type": "string", "enum": ["LOCAL_ONLY"] },
+          "lastStartedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "lastCompletedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "lastEvaluatedUsers": { "type": "integer", "minimum": 0 },
+          "lastEvaluatedRules": { "type": "integer", "minimum": 0 },
+          "lastNewTriggerCount": { "type": "integer", "minimum": 0 },
+          "lastErrorCount": { "type": "integer", "minimum": 0 },
+          "lastError": { "type": "string" }
+        }
+      },
+      "WatchlistAlertNotificationReadRequest": {
+        "type": "object",
+        "required": ["read"],
+        "properties": {
+          "read": { "type": "boolean" }
+        }
+      },
+      "WatchlistAlertNotification": {
+        "type": "object",
+        "required": ["id", "eventId", "ruleId", "market", "symbol", "condition", "title", "message", "channel", "state", "source", "dataStatus", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "eventId": { "type": "string" },
+          "ruleId": { "type": "string" },
+          "market": { "$ref": "#/components/schemas/Market" },
+          "symbol": { "type": "string" },
+          "condition": { "$ref": "#/components/schemas/WatchlistAlertCondition" },
+          "title": { "type": "string" },
+          "message": { "type": "string" },
+          "channel": { "type": "string", "enum": ["LOCAL_ONLY"] },
+          "state": { "type": "string", "enum": ["UNREAD", "READ"] },
+          "source": { "type": "string" },
+          "dataStatus": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "readAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "WatchlistAlertNotificationResponse": {
+        "type": "object",
+        "required": ["notifications", "unreadCount", "source"],
+        "properties": {
+          "notifications": { "type": "array", "items": { "$ref": "#/components/schemas/WatchlistAlertNotification" } },
+          "unreadCount": { "type": "integer", "minimum": 0 },
+          "source": { "type": "string" }
+        }
+      },
+      "WatchlistAlertNotificationPreferences": {
+        "type": "object",
+        "required": ["localEnabled", "emailEnabled", "pushEnabled", "updatedAt"],
+        "properties": {
+          "localEnabled": { "type": "boolean" },
+          "emailEnabled": { "type": "boolean", "description": "Stored preference intent; external delivery remains blocked until a provider is explicitly configured." },
+          "pushEnabled": { "type": "boolean", "description": "Stored preference intent; external delivery remains blocked until a provider is explicitly configured." },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WatchlistAlertNotificationPreferenceRequest": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "localEnabled": { "type": "boolean" },
+          "emailEnabled": { "type": "boolean" },
+          "pushEnabled": { "type": "boolean" }
+        }
+      },
+      "WatchlistAlertNotificationPreferenceResponse": {
+        "type": "object",
+        "required": ["preferences", "externalChannelsAvailable", "externalBlockReason", "source"],
+        "properties": {
+          "preferences": { "$ref": "#/components/schemas/WatchlistAlertNotificationPreferences" },
+          "externalChannelsAvailable": { "type": "boolean" },
+          "externalBlockReason": { "type": "string" },
+          "source": { "type": "string" }
+        }
+      },
+      "WatchlistAlertNotificationCleanupResponse": {
+        "type": "object",
+        "required": ["deleted", "localOnly"],
+        "properties": {
+          "deleted": { "type": "integer", "minimum": 0 },
+          "localOnly": { "type": "boolean", "const": true }
         }
       },
       "AiAnalysisRequest": {
@@ -301,10 +748,72 @@
             "type": "object",
             "required": ["message"],
             "properties": {
-              "message": { "type": "string", "maxLength": 2000 }
+              "message": {
+                "type": "string",
+                "maxLength": 2000,
+                "description": "Open-ended stock-research question; not limited to the frontend shortcut questions."
+              },
+              "history": {
+                "type": "array",
+                "maxItems": 8,
+                "description": "Previous untrusted conversation turns used only as bounded context.",
+                "items": {
+                  "type": "object",
+                  "required": ["role", "content"],
+                  "properties": {
+                    "role": { "type": "string", "enum": ["user", "assistant"] },
+                    "content": { "type": "string", "maxLength": 2000 }
+                  }
+                }
+              }
             }
           }
         ]
+      },
+      "MarketDataQuality": {
+        "type": "object",
+        "required": ["sampleCount", "requiredSampleCount", "dataFrom", "dataTo", "source", "status", "unavailableIndicators"],
+        "properties": {
+          "sampleCount": { "type": "integer", "minimum": 0 },
+          "requiredSampleCount": { "type": "integer", "minimum": 0 },
+          "dataFrom": { "type": "string", "format": "date", "nullable": true },
+          "dataTo": { "type": "string", "format": "date", "nullable": true },
+          "source": { "type": "string" },
+          "status": { "type": "string", "enum": ["OK", "PARTIAL", "SNAPSHOT_ONLY", "INSUFFICIENT_DATA", "MOCK", "UNKNOWN"] },
+          "unavailableIndicators": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "TechnicalSummaryResponse": {
+        "type": "object",
+        "required": ["symbol", "market", "ma5", "ma20", "ma60", "rsi14", "macdSignal", "atr14", "updatedAt", "dataQuality"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "market": { "$ref": "#/components/schemas/Market" },
+          "ma5": { "type": "number" },
+          "ma20": { "type": "number" },
+          "ma60": { "type": "number" },
+          "rsi14": { "type": "number" },
+          "macdSignal": { "type": "string", "enum": ["BULLISH", "BEARISH"] },
+          "atr14": { "type": "number" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "dataQuality": { "$ref": "#/components/schemas/MarketDataQuality" }
+        }
+      },
+      "PredictionResponse": {
+        "type": "object",
+        "required": ["symbol", "market", "horizonDays", "upProbability", "expectedReturn", "volatility", "riskLevel", "modelVersion", "generatedAt", "dataQuality"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "market": { "$ref": "#/components/schemas/Market" },
+          "horizonDays": { "type": "integer", "minimum": 1, "maximum": 60 },
+          "upProbability": { "type": "number", "minimum": 0, "maximum": 1 },
+          "expectedReturn": { "type": "number" },
+          "volatility": { "type": "number", "minimum": 0 },
+          "riskLevel": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+          "modelVersion": { "type": "string", "description": "Model provenance, normally local-logistic-v1; heuristic-momentum-v1 is only a data-insufficient fallback." },
+          "generatedAt": { "type": "string", "format": "date-time" },
+          "dataQuality": { "$ref": "#/components/schemas/MarketDataQuality" }
+        }
       },
       "BacktestRequest": {
         "allOf": [
@@ -315,14 +824,73 @@
               "strategy": {
                 "type": "object",
                 "properties": {
-                  "minAiScore": { "type": "number", "default": 70 },
-                  "minUpProbability": { "type": "number", "default": 0.6 },
-                  "maxRiskLevel": { "type": "string", "default": "MEDIUM" }
+                  "minAiScore": { "type": "number", "minimum": 0, "maximum": 100, "default": 70 },
+                  "minUpProbability": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.6 },
+                  "maxRiskLevel": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"], "default": "MEDIUM" },
+                  "holdingDays": { "type": "integer", "minimum": 1, "maximum": 60, "default": 5 },
+                  "commissionRate": { "type": "number", "minimum": 0, "maximum": 0.05, "default": 0 },
+                  "taxRate": { "type": "number", "minimum": 0, "maximum": 0.05, "default": 0 },
+                  "slippageRate": { "type": "number", "minimum": 0, "maximum": 0.05, "default": 0 },
+                  "takeProfitRate": { "type": "number", "minimum": 0, "maximum": 2, "default": 0 },
+                  "stopLossRate": { "type": "number", "minimum": 0, "maximum": 2, "default": 0 }
                 }
               }
             }
           }
         ]
+      },
+      "BacktestConditions": {
+        "type": "object",
+        "required": ["horizonDays", "signalModel", "minAiScore", "minUpProbability", "maxRiskLevel", "entryRule", "exitRule", "positionSizing", "costModel", "dataScope"],
+        "properties": {
+          "horizonDays": { "type": "integer", "example": 5 },
+          "signalModel": { "type": "string", "example": "technical-momentum-replay-v1" },
+          "minAiScore": { "type": "number", "example": 70 },
+          "minUpProbability": { "type": "number", "example": 0.6 },
+          "maxRiskLevel": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+          "entryRule": { "type": "string" },
+          "exitRule": { "type": "string" },
+          "positionSizing": { "type": "string" },
+          "costModel": { "type": "string" },
+          "dataScope": { "type": "string" }
+        }
+      },
+      "BacktestTrade": {
+        "type": "object",
+        "required": ["entryDate", "exitDate", "entryPrice", "exitPrice", "grossReturn", "costRate", "netReturn", "win", "exitReason"],
+        "properties": {
+          "entryDate": { "type": "string", "format": "date" },
+          "exitDate": { "type": "string", "format": "date" },
+          "entryPrice": { "type": "number" },
+          "exitPrice": { "type": "number" },
+          "grossReturn": { "type": "number" },
+          "costRate": { "type": "number", "minimum": 0 },
+          "netReturn": { "type": "number" },
+          "win": { "type": "boolean" },
+          "exitReason": { "type": "string", "enum": ["HORIZON", "TAKE_PROFIT", "STOP_LOSS"] }
+        }
+      },
+      "BacktestResponse": {
+        "type": "object",
+        "required": ["symbol", "market", "totalReturn", "winRate", "maxDrawdown", "sharpeRatio", "tradeCount", "conditions", "status", "signalModel", "dataPointCount", "note", "trades", "priceSources", "source", "generatedAt"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "market": { "$ref": "#/components/schemas/Market" },
+          "totalReturn": { "type": "number" },
+          "winRate": { "type": "number" },
+          "maxDrawdown": { "type": "number" },
+          "sharpeRatio": { "type": "number" },
+          "tradeCount": { "type": "integer" },
+          "conditions": { "$ref": "#/components/schemas/BacktestConditions" },
+          "status": { "type": "string", "enum": ["COMPLETED", "NO_SIGNALS", "INSUFFICIENT_DATA"] },
+          "signalModel": { "type": "string", "example": "technical-momentum-replay-v1" },
+          "dataPointCount": { "type": "integer", "minimum": 0 },
+          "note": { "type": "string" },
+          "trades": { "type": "array", "items": { "$ref": "#/components/schemas/BacktestTrade" } },
+          "priceSources": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "source": { "type": "string", "example": "historical-price-replay-v1" },
+          "generatedAt": { "type": "string", "format": "date-time" }
+        }
       }
     }
   }

@@ -82,15 +82,24 @@ class FallbackMarketDataProvider implements MarketDataProvider {
             fallback = mockMarketDataProvider.get(market, symbol);
         } catch (IllegalArgumentException ignored) {
         }
-        StockRecord realtime = twseRealtimeMarketDataProvider.tryGet(market, symbol, fallback).orElse(null);
-        if (realtime != null) {
-            return realtime;
+        if (market == Market.TW) {
+            // FinMind is the first Taiwan source with a historical close series.
+            // Realtime-only providers must never be allowed to turn mock history
+            // into a mixed real/mock chart.
+            StockRecord finMindReal = finMindTwMarketDataProvider.tryGet(market, symbol, fallback).orElse(null);
+            if (finMindReal != null) {
+                StockRecord realtime = twseRealtimeMarketDataProvider.tryGet(market, symbol, finMindReal).orElse(null);
+                return realtime != null ? realtime : finMindReal;
+            }
+
+            // No historical source is available. Return a realtime single-point
+            // series instead of appending the quote to mock prices.
+            StockRecord realtime = twseRealtimeMarketDataProvider.tryGet(market, symbol, null).orElse(null);
+            if (realtime != null) {
+                return realtime;
+            }
         }
-        StockRecord finMindReal = finMindTwMarketDataProvider.tryGet(market, symbol, fallback).orElse(null);
-        if (finMindReal != null) {
-            return finMindReal;
-        }
-        StockRecord twReal = twseMarketDataProvider.tryGet(market, symbol, fallback).orElse(null);
+        StockRecord twReal = twseMarketDataProvider.tryGet(market, symbol, market == Market.TW ? null : fallback).orElse(null);
         if (twReal != null) {
             return twReal;
         }
