@@ -114,25 +114,24 @@
       box-shadow: 16px 0 50px rgba(0,0,0,.22);
     }
     .brand {
-      font-size: 24px;
-      font-weight: 900;
-      margin-bottom: 26px;
-      letter-spacing: .05em;
-      line-height: 1;
-      text-transform: uppercase;
-    }
-    .brand::after {
-      content: "Real-time Strategy Lab";
       display: block;
-      margin-top: 8px;
-      color: var(--muted);
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .12em;
+      margin: -4px -6px 22px;
+      border-radius: 14px;
+      overflow: hidden;
+      transition: transform .2s ease, filter .2s ease;
     }
-    .brand span {
-      color: var(--cyan);
-      text-shadow: 0 0 24px rgba(95, 243, 210, .5);
+    .brand:hover {
+      transform: translateY(-1px);
+      filter: drop-shadow(0 0 18px rgba(95, 243, 210, .2));
+    }
+    .brand:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 3px;
+    }
+    .brand img {
+      display: block;
+      width: 100%;
+      height: auto;
     }
     .nav button {
       width: 100%;
@@ -799,7 +798,9 @@
 <body>
   <div class="app">
     <aside class="side">
-      <div class="brand">Stock <span>AI</span></div>
+      <a class="brand" href="#dashboard" data-tab="dashboard" aria-label="返回 Stock AI 總覽">
+        <img src="./assets/stock-ai-logo.svg" alt="Stock AI — Real-Time Strategy Lab" width="1500" height="450" />
+      </a>
       <nav class="nav" aria-label="主選單">
         <button class="active" data-tab="dashboard">▦ 總覽</button>
         <button data-tab="analysis">⌁ 個股分析</button>
