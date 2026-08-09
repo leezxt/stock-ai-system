@@ -4,6 +4,8 @@
 
 > 本專案定位為個人研究與分析工具，不提供券商下單，也不構成投資建議。AI、行情與回測結果都必須確認資料來源與時間後再解讀。
 
+專案入口：<https://github.com/leezxt/stock-ai-system> · 個人作品首頁：<https://leezxt.github.io/leezxt/>
+
 ## 專案簡介
 
 ### 核心能力
@@ -17,6 +19,18 @@
 - **RAG 證據鏈**：文件匯入、向量檢索、hybrid rerank、文件來源與 citation ID 驗證；可使用離線 `hash` embedding，也可切換 OpenAI `text-embedding-3-small` 16 維語意模式。
 - **使用者功能**：HttpOnly session、帳號設定、自選股、回測，以及 PostgreSQL + pgvector 持久化。
 - **可驗證部署**：Spring Boot API 與靜態前端可本機啟動，也可用 Docker Compose 一起啟動 PostgreSQL 與應用程式。
+
+### 技術範圍
+
+| 範圍 | 採用技術與實作邊界 |
+|---|---|
+| 前端與互動 | 同源的靜態 HTML／CSS／JavaScript dashboard；提供行情圖表、技術摘要、AI 分析／問答、自選股、警示、通知、新聞評分與回測操作。 |
+| 後端服務 | Java 21、Spring Boot 4.1、REST API、服務分層、request-id、輸入驗證、HttpOnly／SameSite session 與使用者／IP 限流。 |
+| AI 與 RAG | OpenAI、Gemini、DeepSeek、MIMO adapter；工具型問答、有限多輪上下文、citation 驗證、AI telemetry，以及離線 `hash`／OpenAI `text-embedding-3-small` embedding。 |
+| 市場資料 | 台股 FinMind、TWSE realtime／OpenAPI；美股 Yahoo Finance、Alpha Vantage、FMP；另整合 MOPS 公開資訊與來源匯入 adapter，保留 provider、日期與 fallback 狀態。 |
+| 資料品質 | 交易日序列、data lineage、公司行動、完整性檢查、歷史回放與資料不足 fail-closed；不以即時快照冒充歷史日線，也不從價格缺口猜測除權息。 |
+| 持久化與部署 | PostgreSQL + pgvector、Flyway、HikariCP、Docker Compose；未接資料庫時保留受控的檔案／記憶體 fallback，方便個人本機驗證。 |
+| 驗證與維運 | Maven／JUnit 測試、API contract、Windows smoke scripts、live config preflight、來源比對與 secret scan；未設定 live key 時明確標示 `BLOCKED`。 |
 
 ### 技術架構
 
@@ -67,6 +81,13 @@ Spring Boot 4.1 + Java 21
 | 2026-08-09 | Live 設定前置檢查 | 新增不呼叫外部 AI 的設定診斷，能指出 key／加密 secret 缺少或仍是 `local-env.cmd` 註解模板。 |
 
 目前專案已可在本機以 mock 或設定後的真實 provider 執行；正式 live key、外部來源額度與生產環境驗收仍需依部署環境個別確認。
+
+## 最新動態（2026-08-09）
+
+- **資料來源驗證**：完成官方 TWSE `STOCK_DAY_ALL` 與 backend 摘要比對，並將 FinMind 有日期的歷史序列與即時快照分開，避免價格走勢圖混入不對齊資料。
+- **AI 研究流程**：開放式 AI 問答已可先路由行情、技術、預測、新聞／財報與回測工具，再回傳來源、資料狀態與 citation；OpenAI 語意 embedding 維持 opt-in，離線 `hash` 是安全預設。
+- **警示與通知**：自選股警示、歷史去重、本機通知佇列、通知偏好與已讀清理已完成；Email／推播仍維持 fail-closed 的 `LOCAL_ONLY`，不會在未驗證通道時誤發送。
+- **可重現驗證**：`scripts\check-live-config.cmd` 會先檢查 live key／加密設定但不呼叫外部 AI；缺少必要設定會回報 `BLOCKED`，不把 mock 或未驗收狀態當成 live 通過。
 
 ## 結構
 
