@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./frontend/assets/stock-ai-logo.svg" alt="Stock AI — Real-Time Strategy Lab" width="760" />
+</p>
+
 # Stock AI System
 
 一個以台股、美股研究為核心的 AI 股市分析工作台，提供行情查詢、價格走勢、技術指標、趨勢預測、模型比較、AI 問答、RAG 文件檢索、自選股與回測功能。專案採「真實來源優先、明確標示 fallback」的設計：每筆行情保留供應商日期與來源，資料不足時不會把單點報價偽裝成歷史序列。
